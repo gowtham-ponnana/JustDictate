@@ -11,7 +11,7 @@ JustDictate is a macOS menu bar speech-to-text app. Hold a hotkey, speak, releas
 ```
 just_dictate.py      ← Entry point. rumps menu bar app. Ties everything together.
 ├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
-├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste.
+├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
 └── config_manager.py   ← JSON config at ~/.config/just-dictate/config.json
 ```
@@ -27,6 +27,11 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 - Homebrew Python 3.13+ does not ship tkinter
 - rumps is purpose-built for macOS menu bar apps
 - PyObjC gives native NSWindow for the floating overlay (rumps is too limited for custom windows)
+
+### Why NSSound for completion feedback (not subprocess)?
+- `NSSound.soundNamed_("Tink")` plays built-in macOS system sounds with zero latency
+- No subprocess overhead, no file path needed — the sound name is resolved by AppKit
+- Already have PyObjC as a dependency, so no new imports
 
 ### Why CGEvent for paste (not osascript)?
 - `osascript` requires its own Accessibility permission and has timeout issues
@@ -53,6 +58,8 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 6. **PyObjCTools is a namespace package** (no `__init__.py`). py2app's `imp.find_module` can't find it. If packaging with py2app, put it in `includes`, not `packages`.
 
 7. **PyInstaller must bundle `onnx_asr` as data**, not just as a Python package. The `onnx_asr/preprocessors/*.onnx` files are loaded at runtime and won't be found otherwise.
+
+8. **Escape cancel uses a `_cancelled` flag**, not just `_cancel_recording()`. The flag is needed because `_on_release` fires after `_cancel_recording` when the user releases the hotkey — without the flag, it would still try to transcribe. `_cancel_recording()` sets `_cancelled = True` and `_on_release()` checks/resets it.
 
 ## Running Locally
 

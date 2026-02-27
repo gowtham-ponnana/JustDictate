@@ -62,6 +62,7 @@ class JustDictateApp(rumps.App):
             self.engine = DictationEngine(
                 on_recording_start=self._on_recording_start,
                 on_recording_stop=self._on_recording_stop,
+                on_recording_cancel=self._on_recording_cancel,
                 on_audio_level=self._on_audio_level,
                 on_transcription_start=self._on_transcription_start,
                 on_transcription_done=self._on_transcription_done,
@@ -89,6 +90,10 @@ class JustDictateApp(rumps.App):
     def _on_recording_stop(self):
         self.title = "🎙"
 
+    def _on_recording_cancel(self):
+        self.overlay.hide()
+        self.title = "🎙"
+
     def _on_audio_level(self, rms: float):
         self.overlay.update_levels(rms)
 
@@ -101,6 +106,14 @@ class JustDictateApp(rumps.App):
         self.title = "🎙"
         if text.strip():
             log.info("Typed: %s", text.strip())
+            self._play_completion_sound()
+
+    def _play_completion_sound(self):
+        """Play a short system sound to indicate transcription is done."""
+        from AppKit import NSSound
+        sound = NSSound.soundNamed_("Tink")
+        if sound:
+            sound.play()
 
     def _on_error(self, msg: str):
         self.overlay.hide()

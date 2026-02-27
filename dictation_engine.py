@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 # Right Command vk code on macOS
 VK_RIGHT_CMD = 0x36
+VK_ESCAPE = 0x35
 
 
 class DictationEngine:
@@ -23,6 +24,7 @@ class DictationEngine:
         self,
         on_recording_start: Callable | None = None,
         on_recording_stop: Callable | None = None,
+        on_recording_cancel: Callable | None = None,
         on_audio_level: Callable[[float], None] | None = None,
         on_transcription_start: Callable | None = None,
         on_transcription_done: Callable[[str], None] | None = None,
@@ -31,6 +33,7 @@ class DictationEngine:
     ):
         self.on_recording_start = on_recording_start
         self.on_recording_stop = on_recording_stop
+        self.on_recording_cancel = on_recording_cancel
         self.on_audio_level = on_audio_level
         self.on_transcription_start = on_transcription_start
         self.on_transcription_done = on_transcription_done
@@ -38,6 +41,7 @@ class DictationEngine:
         self.transcribe_fn = transcribe_fn
 
         self._recording = False
+        self._cancelled = False
         self._audio_chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self._held_vk: set[int] = set()
@@ -89,6 +93,12 @@ class DictationEngine:
     def _on_press(self, key) -> None:
         vk = self._get_vk(key)
         if vk is None:
+            # Check for Escape via named key (pynput may not give vk for it)
+            if key == keyboard.Key.esc and self._recording:
+                self._cancel_recording()
+            return
+        if vk == VK_ESCAPE and self._recording:
+            self._cancel_recording()
             return
         self._held_vk.add(vk)
 
@@ -103,6 +113,9 @@ class DictationEngine:
 
         if self._recording and not self._target_vk_codes.issubset(self._held_vk):
             self._stop_recording()
+            if self._cancelled:
+                self._cancelled = False
+                return
             threading.Thread(target=self._transcribe_and_type, daemon=True).start()
 
     def _start_recording(self) -> None:
@@ -129,6 +142,19 @@ class DictationEngine:
         log.info("Recording started.")
         if self.on_recording_start:
             self.on_recording_start()
+
+    def _cancel_recording(self) -> None:
+        """Cancel the current recording — discard audio, skip transcription."""
+        self._cancelled = True
+        self._recording = False
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        self._audio_chunks = []
+        log.info("Recording cancelled.")
+        if self.on_recording_cancel:
+            self.on_recording_cancel()
 
     def _stop_recording(self) -> None:
         self._recording = False

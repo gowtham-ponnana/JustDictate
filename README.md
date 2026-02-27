@@ -7,6 +7,8 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 ## Features
 
 - **Hold-to-dictate** — hold Right Command (configurable), speak, release
+- **Escape to cancel** — press Escape while recording to discard audio and cancel
+- **Completion sound** — plays a "Tink" sound when transcription finishes
 - **Auto-type** — transcribed text is pasted into whatever app is focused
 - **Floating overlay** — dark translucent window with waveform animation while recording
 - **Menu bar app** — lives in the menu bar, no dock icon
@@ -45,7 +47,8 @@ Grant these in **System Settings > Privacy & Security**:
 1. **Launch** — a 🎙 icon appears in the menu bar
 2. **Hold Right Command** — a floating overlay appears and recording starts
 3. **Speak** — waveform animates in real time
-4. **Release** — audio is transcribed and typed into the focused app
+4. **Release** — audio is transcribed, typed into the focused app, and a completion sound plays
+5. **Cancel** — press **Escape** while recording to discard and cancel (no transcription)
 
 ### Menu Bar Options
 
@@ -99,7 +102,7 @@ hdiutil create -volname "JustDictate" \
 
 1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/just-dictate/`.
 
-2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V.
+2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio.
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
