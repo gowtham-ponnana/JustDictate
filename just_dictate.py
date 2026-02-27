@@ -68,6 +68,7 @@ class JustDictateApp(rumps.App):
                 on_transcription_done=self._on_transcription_done,
                 on_error=self._on_error,
                 transcribe_fn=self.model.transcribe,
+                on_paste_undo=self._on_paste_undo,
             )
             self.engine.start()
             log.info("JustDictate ready.")
@@ -114,6 +115,9 @@ class JustDictateApp(rumps.App):
         sound = NSSound.soundNamed_("Tink")
         if sound:
             sound.play()
+
+    def _on_paste_undo(self):
+        log.info("Undo last dictation paste.")
 
     def _on_error(self, msg: str):
         self.overlay.hide()

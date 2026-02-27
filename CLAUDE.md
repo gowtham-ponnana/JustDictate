@@ -11,7 +11,7 @@ JustDictate is a macOS menu bar speech-to-text app. Hold a hotkey, speak, releas
 ```
 just_dictate.py      ← Entry point. rumps menu bar app. Ties everything together.
 ├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
-├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel.
+├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel + Escape-to-undo.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
 └── config_manager.py   ← JSON config at ~/.config/just-dictate/config.json
 ```
@@ -60,6 +60,8 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 7. **PyInstaller must bundle `onnx_asr` as data**, not just as a Python package. The `onnx_asr/preprocessors/*.onnx` files are loaded at runtime and won't be found otherwise.
 
 8. **Escape cancel uses a `_cancelled` flag**, not just `_cancel_recording()`. The flag is needed because `_on_release` fires after `_cancel_recording` when the user releases the hotkey — without the flag, it would still try to transcribe. `_cancel_recording()` sets `_cancelled = True` and `_on_release()` checks/resets it.
+
+9. **Escape has three behaviors** depending on state: (1) during recording → cancel, (2) within 5s after paste → undo via Cmd+Z, (3) otherwise → pass through. All routed through `_handle_escape()`. The undo sends CGEvent Cmd+Z (keycode 6), which works in GUI apps but not terminals (where Cmd+Z sends SIGTSTP).
 
 ## Running Locally
 

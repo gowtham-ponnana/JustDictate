@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 VK_RIGHT_CMD = 0x36
 VK_ESCAPE = 0x35
 
+# How long after a paste the user can press Escape to undo it
+UNDO_WINDOW = 5.0
+
 
 class DictationEngine:
     def __init__(
@@ -30,6 +33,7 @@ class DictationEngine:
         on_transcription_done: Callable[[str], None] | None = None,
         on_error: Callable[[str], None] | None = None,
         transcribe_fn: Callable[[np.ndarray], str] | None = None,
+        on_paste_undo: Callable | None = None,
     ):
         self.on_recording_start = on_recording_start
         self.on_recording_stop = on_recording_stop
@@ -39,9 +43,11 @@ class DictationEngine:
         self.on_transcription_done = on_transcription_done
         self.on_error = on_error
         self.transcribe_fn = transcribe_fn
+        self.on_paste_undo = on_paste_undo
 
         self._recording = False
         self._cancelled = False
+        self._last_paste_time: float | None = None
         self._audio_chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self._held_vk: set[int] = set()
@@ -94,11 +100,11 @@ class DictationEngine:
         vk = self._get_vk(key)
         if vk is None:
             # Check for Escape via named key (pynput may not give vk for it)
-            if key == keyboard.Key.esc and self._recording:
-                self._cancel_recording()
+            if key == keyboard.Key.esc:
+                self._handle_escape()
             return
-        if vk == VK_ESCAPE and self._recording:
-            self._cancel_recording()
+        if vk == VK_ESCAPE:
+            self._handle_escape()
             return
         self._held_vk.add(vk)
 
@@ -156,6 +162,34 @@ class DictationEngine:
         if self.on_recording_cancel:
             self.on_recording_cancel()
 
+    def _handle_escape(self) -> None:
+        """Route Escape: cancel recording if active, else undo last paste."""
+        if self._recording:
+            self._cancel_recording()
+        elif (
+            self._last_paste_time is not None
+            and (time.time() - self._last_paste_time) < UNDO_WINDOW
+        ):
+            self._undo_last_paste()
+
+    def _undo_last_paste(self) -> None:
+        """Send Cmd+Z to undo the last paste, then clear the undo window."""
+        import Quartz
+
+        src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+        # keycode 6 = 'z'
+        z_down = Quartz.CGEventCreateKeyboardEvent(src, 6, True)
+        z_up = Quartz.CGEventCreateKeyboardEvent(src, 6, False)
+        Quartz.CGEventSetFlags(z_down, Quartz.kCGEventFlagMaskCommand)
+        Quartz.CGEventSetFlags(z_up, Quartz.kCGEventFlagMaskCommand)
+        Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, z_down)
+        Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, z_up)
+
+        self._last_paste_time = None
+        log.info("Undo last paste (Cmd+Z).")
+        if self.on_paste_undo:
+            self.on_paste_undo()
+
     def _stop_recording(self) -> None:
         self._recording = False
         if self._stream:
@@ -195,6 +229,7 @@ class DictationEngine:
 
             log.info("Transcribed: %s", text.strip())
             self._auto_type(text)
+            self._last_paste_time = time.time()
 
             if self.on_transcription_done:
                 self.on_transcription_done(text)

@@ -8,6 +8,7 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 
 - **Hold-to-dictate** — hold Right Command (configurable), speak, release
 - **Escape to cancel** — press Escape while recording to discard audio and cancel
+- **Escape to undo** — press Escape within 5 seconds after a dictation to undo the pasted text (sends Cmd+Z)
 - **Completion sound** — plays a "Tink" sound when transcription finishes
 - **Auto-type** — transcribed text is pasted into whatever app is focused
 - **Floating overlay** — dark translucent window with waveform animation while recording
@@ -49,6 +50,9 @@ Grant these in **System Settings > Privacy & Security**:
 3. **Speak** — waveform animates in real time
 4. **Release** — audio is transcribed, typed into the focused app, and a completion sound plays
 5. **Cancel** — press **Escape** while recording to discard and cancel (no transcription)
+6. **Undo** — press **Escape** within 5 seconds after a dictation to undo the pasted text
+
+> **Note:** Escape-to-undo sends Cmd+Z, which works in most GUI apps. In terminals, Cmd+Z may send SIGTSTP (suspend) instead of undo.
 
 ### Menu Bar Options
 
@@ -102,7 +106,7 @@ hdiutil create -volname "JustDictate" \
 
 1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/just-dictate/`.
 
-2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio.
+2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio. Pressing Escape within 5 seconds after a paste sends Cmd+Z to undo.
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
