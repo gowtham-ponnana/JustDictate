@@ -1,9 +1,9 @@
-"""JSON config read/write at ~/.config/parakeet-stt/config.json"""
+"""JSON config read/write at ~/.config/just-dictate/config.json"""
 
 import json
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "parakeet-stt"
+CONFIG_DIR = Path.home() / ".config" / "just-dictate"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULTS = {

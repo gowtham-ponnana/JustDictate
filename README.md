@@ -1,10 +1,8 @@
-# ParakeetSTT
+# JustDictate
 
 **Hold-to-dictate speech-to-text for macOS.** Hold a hotkey, speak, release — your words are transcribed and typed into the focused app. Runs entirely on-device using [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) via ONNX. No cloud, no API keys, no GPU required.
 
 Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps, and PyObjC.
-
-https://github.com/user-attachments/assets/placeholder
 
 ## Features
 
@@ -24,8 +22,8 @@ https://github.com/user-attachments/assets/placeholder
 ## Quick Start
 
 ```bash
-git clone https://github.com/gowtham-ponnana/ParakeetSTT.git
-cd ParakeetSTT
+git clone https://github.com/gowtham-ponnana/JustDictate.git
+cd JustDictate
 chmod +x run.sh
 ./run.sh
 ```
@@ -64,28 +62,28 @@ uv pip install pyinstaller
 
 # PyInstaller conflicts with pyproject.toml dependencies
 mv pyproject.toml pyproject.toml.bak
-uv run pyinstaller ParakeetSTT.spec --clean
+uv run pyinstaller JustDictate.spec --clean
 mv pyproject.toml.bak pyproject.toml
 
 # Install to Applications
-cp -R dist/ParakeetSTT.app /Applications/
+cp -R dist/JustDictate.app /Applications/
 ```
 
-Then grant permissions to `ParakeetSTT.app` instead of Terminal.
+Then grant permissions to `JustDictate.app` instead of Terminal.
 
 ### Creating a DMG
 
 ```bash
-hdiutil create -volname "ParakeetSTT" \
-  -srcfolder dist/ParakeetSTT.app \
-  -ov -format UDZO ParakeetSTT.dmg
+hdiutil create -volname "JustDictate" \
+  -srcfolder dist/JustDictate.app \
+  -ov -format UDZO JustDictate.dmg
 ```
 
 ## How It Works
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  parakeet_stt.py (rumps menu bar app)               │
+│  just_dictate.py (rumps menu bar app)               │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
 │  │ model_manager│  │  dictation   │  │ floating  │ │
 │  │   .py        │  │  _engine.py  │  │ _window.py│ │
@@ -95,21 +93,21 @@ hdiutil create -volname "ParakeetSTT" \
 │  │ TDT 0.6B v3  │  │ CGEvent      │  │ waveform  │ │
 │  └──────────────┘  └──────────────┘  └───────────┘ │
 │                                                     │
-│  config_manager.py — ~/.config/parakeet-stt/        │
+│  config_manager.py — ~/.config/just-dictate/        │
 └─────────────────────────────────────────────────────┘
 ```
 
-1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/parakeet-stt/`.
+1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/just-dictate/`.
 
 2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V.
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
-4. **config_manager.py** — Simple JSON config at `~/.config/parakeet-stt/config.json`.
+4. **config_manager.py** — Simple JSON config at `~/.config/just-dictate/config.json`.
 
 ## Configuration
 
-Config file: `~/.config/parakeet-stt/config.json`
+Config file: `~/.config/just-dictate/config.json`
 
 ```json
 {

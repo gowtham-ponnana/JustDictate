@@ -1,4 +1,4 @@
-"""ParakeetSTT — macOS menu bar speech-to-text app."""
+"""JustDictate — macOS menu bar speech-to-text app."""
 
 import logging
 import threading
@@ -14,12 +14,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
-log = logging.getLogger("parakeet")
+log = logging.getLogger("justdictate")
 
 
-class ParakeetApp(rumps.App):
+class JustDictateApp(rumps.App):
     def __init__(self):
-        super().__init__("ParakeetSTT", title="🎙", quit_button="Quit")
+        super().__init__("JustDictate", title="🎙", quit_button="Quit")
 
         self.model = ModelManager()
         self.overlay = FloatingOverlay()
@@ -69,7 +69,7 @@ class ParakeetApp(rumps.App):
                 transcribe_fn=self.model.transcribe,
             )
             self.engine.start()
-            log.info("ParakeetSTT ready.")
+            log.info("JustDictate ready.")
         except Exception as e:
             err_msg = str(e)
             log.error("Failed to load model: %s", err_msg)
@@ -106,7 +106,7 @@ class ParakeetApp(rumps.App):
         self.overlay.hide()
         self.title = "🎙"
         try:
-            rumps.notification("ParakeetSTT Error", "", msg[:200])
+            rumps.notification("JustDictate Error", "", msg[:200])
         except RuntimeError:
             log.error("Notification failed: %s", msg[:200])
 
@@ -137,7 +137,7 @@ class ParakeetApp(rumps.App):
         save_config(cfg)
 
 def main():
-    app = ParakeetApp()
+    app = JustDictateApp()
 
     @rumps.events.before_quit
     def _cleanup():

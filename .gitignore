@@ -11,23 +11,9 @@ __pycache__/
 build/
 dist/
 *.dmg
-
-# PyInstaller
 *.spec
-
-# py2app (legacy)
 setup.py
-
-# uv lock (generated, reproducible from pyproject.toml)
-# Uncomment the next line if you prefer NOT to commit the lock file
-# uv.lock
 
 # macOS
 .DS_Store
 *.swp
-
-# Config (user-specific)
-~/.config/parakeet-stt/
-
-# Model cache (downloaded at runtime, ~2.5 GB)
-~/.cache/parakeet-stt/

@@ -1,19 +1,19 @@
-# ParakeetSTT — Developer Guide
+# JustDictate — Developer Guide
 
 This file is for AI assistants (Claude Code, Copilot, etc.) working on this codebase.
 
 ## What is this?
 
-ParakeetSTT is a macOS menu bar speech-to-text app. Hold a hotkey, speak, release — your words are transcribed and auto-typed into the focused app. Think SuperWhisper but open source, using NVIDIA's Parakeet TDT 0.6B v3 model via ONNX (no GPU required).
+JustDictate is a macOS menu bar speech-to-text app. Hold a hotkey, speak, release — your words are transcribed and auto-typed into the focused app. Think SuperWhisper but open source, using NVIDIA's Parakeet TDT 0.6B v3 model via ONNX (no GPU required).
 
 ## Architecture
 
 ```
-parakeet_stt.py      ← Entry point. rumps menu bar app. Ties everything together.
+just_dictate.py      ← Entry point. rumps menu bar app. Ties everything together.
 ├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
 ├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
-└── config_manager.py   ← JSON config at ~/.config/parakeet-stt/config.json
+└── config_manager.py   ← JSON config at ~/.config/just-dictate/config.json
 ```
 
 ## Key Technical Decisions
@@ -33,7 +33,7 @@ parakeet_stt.py      ← Entry point. rumps menu bar app. Ties everything togeth
 - CGEvent works with the same Accessibility permission that pynput already needs
 
 ### Why uv?
-- User's system Python is 3.14 which is incompatible with onnxruntime
+- System Python 3.14 is incompatible with onnxruntime
 - uv auto-manages Python version (pinned to >=3.11,<3.14) and dependencies
 
 ## Known Gotchas
@@ -58,19 +58,25 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 
 ```bash
 # Requires macOS and uv (brew install uv)
-uv run python parakeet_stt.py
+uv run python just_dictate.py
 ```
 
-First run downloads the model (~2.5 GB) to `~/.cache/parakeet-stt/`.
+First run downloads the model (~2.5 GB) to `~/.cache/just-dictate/`.
 
 ## Building the .app Bundle
 
+See the [PyInstaller spec generation](#) — create a spec file that:
+- Includes `onnx_asr` as datas (for the `preprocessors/*.onnx` files)
+- Includes `libonnxruntime.dylib` and `libportaudio.dylib` as binaries
+- Sets `LSUIElement: True` in `info_plist` (hides dock icon)
+- Sets `NSMicrophoneUsageDescription` in `info_plist`
+
 ```bash
 uv pip install pyinstaller
-mv pyproject.toml pyproject.toml.bak  # py2app compat workaround
-uv run pyinstaller ParakeetSTT.spec --clean
+mv pyproject.toml pyproject.toml.bak
+uv run pyinstaller JustDictate.spec --clean
 mv pyproject.toml.bak pyproject.toml
-# Output: dist/ParakeetSTT.app
+# Output: dist/JustDictate.app
 ```
 
 ## macOS Permissions
@@ -82,7 +88,7 @@ The app needs these in System Settings > Privacy & Security:
 
 ## Config
 
-Stored at `~/.config/parakeet-stt/config.json`:
+Stored at `~/.config/just-dictate/config.json`:
 
 ```json
 {
@@ -96,7 +102,7 @@ Hotkey options: `right_cmd`, `right_alt`, `left_ctrl_left_alt`
 
 ## Model Cache
 
-Downloaded to `~/.cache/parakeet-stt/`:
+Downloaded to `~/.cache/just-dictate/`:
 - `parakeet-v3/` — NVIDIA Parakeet TDT 0.6B v3 (~2.5 GB)
 - `silero-vad/` — Silero VAD model (~2 MB)
 

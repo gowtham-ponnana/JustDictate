@@ -8,7 +8,7 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 MODEL_NAME = "nemo-parakeet-tdt-0.6b-v3"
-CACHE_DIR = Path.home() / ".cache" / "parakeet-stt"
+CACHE_DIR = Path.home() / ".cache" / "just-dictate"
 MODEL_DIR = CACHE_DIR / "parakeet-v3"
 VAD_DIR = CACHE_DIR / "silero-vad"
 
@@ -36,14 +36,14 @@ class ModelManager:
             model_path = None
             if MODEL_DIR.exists() and any(MODEL_DIR.glob("*.onnx")):
                 model_path = str(MODEL_DIR)
-                log.info("Loading Parakeet model from cache %s ...", MODEL_DIR)
+                log.info("Loading model from cache %s ...", MODEL_DIR)
             else:
                 CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 model_path = str(MODEL_DIR)
                 # Remove empty dir so onnx_asr triggers download
                 if MODEL_DIR.exists() and not any(MODEL_DIR.iterdir()):
                     MODEL_DIR.rmdir()
-                log.info("Downloading Parakeet model to %s (first run, ~2.5 GB)...", MODEL_DIR)
+                log.info("Downloading model to %s (first run, ~2.5 GB)...", MODEL_DIR)
 
             self._model = onnx_asr.load_model(
                 MODEL_NAME,

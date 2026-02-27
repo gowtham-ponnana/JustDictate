@@ -1,7 +1,7 @@
 [project]
-name = "parakeet-stt"
+name = "just-dictate"
 version = "0.1.0"
-description = "macOS speech-to-text using NVIDIA Parakeet TDT 0.6B v3"
+description = "macOS hold-to-dictate speech-to-text — fully offline, on-device"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "onnx-asr[cpu,hub]",
