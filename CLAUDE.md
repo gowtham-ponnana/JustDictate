@@ -1,0 +1,113 @@
+# ParakeetSTT — Developer Guide
+
+This file is for AI assistants (Claude Code, Copilot, etc.) working on this codebase.
+
+## What is this?
+
+ParakeetSTT is a macOS menu bar speech-to-text app. Hold a hotkey, speak, release — your words are transcribed and auto-typed into the focused app. Think SuperWhisper but open source, using NVIDIA's Parakeet TDT 0.6B v3 model via ONNX (no GPU required).
+
+## Architecture
+
+```
+parakeet_stt.py      ← Entry point. rumps menu bar app. Ties everything together.
+├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
+├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste.
+├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
+└── config_manager.py   ← JSON config at ~/.config/parakeet-stt/config.json
+```
+
+## Key Technical Decisions
+
+### Why onnx-asr (not PyTorch/whisper.cpp)?
+- Pure ONNX inference — no PyTorch dependency (saves ~2 GB)
+- `onnx-asr` handles model download, preprocessing, and inference in one package
+- CPU-only via `CPUExecutionProvider` (CoreML provider is buggy on macOS with external data files)
+
+### Why rumps + PyObjC (not tkinter/Qt)?
+- Homebrew Python 3.13+ does not ship tkinter
+- rumps is purpose-built for macOS menu bar apps
+- PyObjC gives native NSWindow for the floating overlay (rumps is too limited for custom windows)
+
+### Why CGEvent for paste (not osascript)?
+- `osascript` requires its own Accessibility permission and has timeout issues
+- CGEvent works with the same Accessibility permission that pynput already needs
+
+### Why uv?
+- User's system Python is 3.14 which is incompatible with onnxruntime
+- uv auto-manages Python version (pinned to >=3.11,<3.14) and dependencies
+
+## Known Gotchas
+
+These are bugs that took hours to solve. **Do not change** these patterns without understanding why:
+
+1. **`providers=['CPUExecutionProvider']` is mandatory** in `load_model()`. Without it, onnxruntime defaults to CoreML on macOS which crashes with `"model_path must not be empty"` on models with external data files.
+
+2. **`model.recognize(audio, sample_rate=16000)`** — the parameter is `sample_rate=`, NOT `sr=`. Wrong name silently produces garbage.
+
+3. **Empty model directory breaks onnx-asr download**. If `MODEL_DIR` exists but is empty, `onnx_asr.load_model()` tries to find files locally and fails instead of downloading. The code explicitly removes empty dirs before calling load.
+
+4. **`rumps.App.quit_button` is a property**, not a regular attribute. Assigning `self.quit_button = MenuItem(...)` calls the property setter. Don't add a custom quit button to `self.menu` — let rumps handle it via the `quit_button="Quit"` constructor arg.
+
+5. **`rumps.Timer(0, callback)` crashes** with `ValueError: depythonifying 'double', got 'function'`. Use `PyObjCTools.AppHelper.callAfter()` for thread-safe UI updates instead.
+
+6. **PyObjCTools is a namespace package** (no `__init__.py`). py2app's `imp.find_module` can't find it. If packaging with py2app, put it in `includes`, not `packages`.
+
+7. **PyInstaller must bundle `onnx_asr` as data**, not just as a Python package. The `onnx_asr/preprocessors/*.onnx` files are loaded at runtime and won't be found otherwise.
+
+## Running Locally
+
+```bash
+# Requires macOS and uv (brew install uv)
+uv run python parakeet_stt.py
+```
+
+First run downloads the model (~2.5 GB) to `~/.cache/parakeet-stt/`.
+
+## Building the .app Bundle
+
+```bash
+uv pip install pyinstaller
+mv pyproject.toml pyproject.toml.bak  # py2app compat workaround
+uv run pyinstaller ParakeetSTT.spec --clean
+mv pyproject.toml.bak pyproject.toml
+# Output: dist/ParakeetSTT.app
+```
+
+## macOS Permissions
+
+The app needs these in System Settings > Privacy & Security:
+- **Microphone** — audio recording
+- **Accessibility** — hotkey detection + CGEvent paste
+- **Input Monitoring** — pynput global key listener
+
+## Config
+
+Stored at `~/.config/parakeet-stt/config.json`:
+
+```json
+{
+  "hotkey": "right_cmd",
+  "auto_type_method": "clipboard_paste",
+  "add_trailing_space": true
+}
+```
+
+Hotkey options: `right_cmd`, `right_alt`, `left_ctrl_left_alt`
+
+## Model Cache
+
+Downloaded to `~/.cache/parakeet-stt/`:
+- `parakeet-v3/` — NVIDIA Parakeet TDT 0.6B v3 (~2.5 GB)
+- `silero-vad/` — Silero VAD model (~2 MB)
+
+## Dependencies
+
+All managed via `pyproject.toml`:
+- `onnx-asr[cpu,hub]` — ONNX ASR engine
+- `onnxruntime>=1.24.2` — ONNX inference runtime
+- `sounddevice` — microphone input (via PortAudio)
+- `pynput` — global hotkey detection
+- `numpy` — audio array processing
+- `rumps` — macOS menu bar framework
+- `pyobjc-framework-Cocoa` — NSWindow, NSView, etc.
+- `pyobjc-framework-Quartz` — CGEvent for keystroke injection
