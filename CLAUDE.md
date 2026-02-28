@@ -13,7 +13,7 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 ├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
 ├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel + Escape-to-undo.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
-└── config_manager.py   ← JSON config at ~/.config/just-dictate/config.json
+└── config_manager.py   ← JSON config + stats at ~/.config/just-dictate/
 ```
 
 ## Key Technical Decisions
@@ -74,19 +74,18 @@ First run downloads the model (~2.5 GB) to `~/.cache/just-dictate/`.
 
 ## Building the .app Bundle
 
-See the [PyInstaller spec generation](#) — create a spec file that:
-- Includes `onnx_asr` as datas (for the `preprocessors/*.onnx` files)
-- Includes `libonnxruntime.dylib` and `libportaudio.dylib` as binaries
-- Sets `LSUIElement: True` in `info_plist` (hides dock icon)
-- Sets `NSMicrophoneUsageDescription` in `info_plist`
+Use the install script to build and copy to `/Applications`:
 
 ```bash
-uv pip install pyinstaller
-mv pyproject.toml pyproject.toml.bak
-uv run pyinstaller JustDictate.spec --clean
-mv pyproject.toml.bak pyproject.toml
-# Output: dist/JustDictate.app
+./install.sh
+# Or manually: see install.sh for the full sequence
 ```
+
+The spec file (`JustDictate.spec`) is preconfigured to:
+- Include `onnx_asr` as datas (for the `preprocessors/*.onnx` files)
+- Include `libonnxruntime.dylib` and `libportaudio.dylib` as binaries
+- Set `LSUIElement: True` in `info_plist` (hides dock icon)
+- Set `NSMicrophoneUsageDescription` in `info_plist`
 
 ## macOS Permissions
 
@@ -108,6 +107,12 @@ Stored at `~/.config/just-dictate/config.json`:
 ```
 
 Hotkey options: `right_cmd`, `right_alt`, `left_ctrl_left_alt`
+
+Stats at `~/.config/just-dictate/stats.json`:
+
+```json
+{"total_recording_seconds": 0.0, "total_recordings": 0}
+```
 
 ## Model Cache
 

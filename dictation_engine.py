@@ -34,6 +34,7 @@ class DictationEngine:
         on_error: Callable[[str], None] | None = None,
         transcribe_fn: Callable[[np.ndarray], str] | None = None,
         on_paste_undo: Callable | None = None,
+        on_recording_duration: Callable[[float], None] | None = None,
     ):
         self.on_recording_start = on_recording_start
         self.on_recording_stop = on_recording_stop
@@ -44,8 +45,10 @@ class DictationEngine:
         self.on_error = on_error
         self.transcribe_fn = transcribe_fn
         self.on_paste_undo = on_paste_undo
+        self.on_recording_duration = on_recording_duration
 
         self._recording = False
+        self._recording_start_time: float | None = None
         self._cancelled = False
         self._last_paste_time: float | None = None
         self._audio_chunks: list[np.ndarray] = []
@@ -126,6 +129,7 @@ class DictationEngine:
 
     def _start_recording(self) -> None:
         self._recording = True
+        self._recording_start_time = time.time()
         self._audio_chunks = []
 
         def audio_callback(indata, frames, time_info, status):
@@ -153,6 +157,7 @@ class DictationEngine:
         """Cancel the current recording — discard audio, skip transcription."""
         self._cancelled = True
         self._recording = False
+        self._recording_start_time = None
         if self._stream:
             self._stream.stop()
             self._stream.close()
@@ -192,6 +197,10 @@ class DictationEngine:
 
     def _stop_recording(self) -> None:
         self._recording = False
+        duration = None
+        if self._recording_start_time is not None:
+            duration = time.time() - self._recording_start_time
+            self._recording_start_time = None
         if self._stream:
             self._stream.stop()
             self._stream.close()
@@ -199,6 +208,8 @@ class DictationEngine:
         log.info("Recording stopped.")
         if self.on_recording_stop:
             self.on_recording_stop()
+        if duration is not None and self.on_recording_duration:
+            self.on_recording_duration(duration)
 
     def _transcribe_and_type(self) -> None:
         if not self._audio_chunks:

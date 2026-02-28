@@ -5,7 +5,13 @@ import threading
 
 import rumps
 
-from config_manager import HOTKEY_PRESETS, load as load_config, save as save_config
+from config_manager import (
+    HOTKEY_PRESETS,
+    load as load_config,
+    load_stats,
+    save as save_config,
+    save_stats,
+)
 from dictation_engine import DictationEngine
 from floating_window import FloatingOverlay
 from model_manager import ModelManager
@@ -27,6 +33,10 @@ class JustDictateApp(rumps.App):
 
         # Menu items
         self.status_item = rumps.MenuItem("Status: Loading model...")
+        stats = load_stats()
+        self.time_item = rumps.MenuItem(
+            self._format_time(stats["total_recording_seconds"])
+        )
         self.hotkey_menu = rumps.MenuItem("Hotkey")
         self.trailing_space_item = rumps.MenuItem(
             "Add Trailing Space", callback=self._toggle_trailing_space
@@ -46,6 +56,7 @@ class JustDictateApp(rumps.App):
         # rumps auto-appends the quit button — don't add it here
         self.menu = [
             self.status_item,
+            self.time_item,
             None,  # separator
             self.hotkey_menu,
             self.trailing_space_item,
@@ -69,6 +80,7 @@ class JustDictateApp(rumps.App):
                 on_error=self._on_error,
                 transcribe_fn=self.model.transcribe,
                 on_paste_undo=self._on_paste_undo,
+                on_recording_duration=self._on_recording_duration,
             )
             self.engine.start()
             log.info("JustDictate ready.")
@@ -115,6 +127,26 @@ class JustDictateApp(rumps.App):
         sound = NSSound.soundNamed_("Tink")
         if sound:
             sound.play()
+
+    def _on_recording_duration(self, duration: float):
+        stats = load_stats()
+        stats["total_recording_seconds"] += duration
+        stats["total_recordings"] += 1
+        save_stats(stats)
+        text = self._format_time(stats["total_recording_seconds"])
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(lambda: setattr(self.time_item, "title", text))
+
+    @staticmethod
+    def _format_time(seconds: float) -> str:
+        s = int(seconds)
+        if s < 60:
+            return f"Total: {s}s"
+        if s < 3600:
+            return f"Total: {s // 60}m {s % 60}s"
+        h = s // 3600
+        m = (s % 3600) // 60
+        return f"Total: {h}h {m}m"
 
     def _on_paste_undo(self):
         log.info("Undo last dictation paste.")

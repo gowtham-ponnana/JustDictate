@@ -9,6 +9,7 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 - **Hold-to-dictate** — hold Right Command (configurable), speak, release
 - **Escape to cancel** — press Escape while recording to discard audio and cancel
 - **Escape to undo** — press Escape within 5 seconds after a dictation to undo the pasted text (sends Cmd+Z)
+- **Recording time tracker** — cumulative recording time displayed in the menu bar, persists across restarts
 - **Completion sound** — plays a "Tink" sound when transcription finishes
 - **Auto-type** — transcribed text is pasted into whatever app is focused
 - **Floating overlay** — dark translucent window with waveform animation while recording
@@ -57,26 +58,22 @@ Grant these in **System Settings > Privacy & Security**:
 ### Menu Bar Options
 
 - **Status** — shows current state (loading / ready / error)
+- **Total time** — cumulative recording time (e.g., "Total: 5m 23s"), persists across restarts
 - **Hotkey** — switch between Right Command, Right Alt, or Left Ctrl + Left Alt
 - **Add Trailing Space** — toggle automatic space after each dictation
 
-## Building a .app Bundle
+## Install as App
 
-To run as a standalone app (recommended for permissions):
+Build and install to `/Applications` with a single script:
 
 ```bash
-uv pip install pyinstaller
-
-# PyInstaller conflicts with pyproject.toml dependencies
-mv pyproject.toml pyproject.toml.bak
-uv run pyinstaller JustDictate.spec --clean
-mv pyproject.toml.bak pyproject.toml
-
-# Install to Applications
-cp -R dist/JustDictate.app /Applications/
+git clone https://github.com/gowtham-ponnana/JustDictate.git
+cd JustDictate
+chmod +x install.sh
+./install.sh
 ```
 
-Then grant permissions to `JustDictate.app` instead of Terminal.
+This handles everything: Homebrew, uv, Python dependencies, PyInstaller build, and copy to `/Applications`. No manual steps. Then grant permissions to `JustDictate.app` instead of Terminal.
 
 ### Creating a DMG
 
@@ -110,7 +107,7 @@ hdiutil create -volname "JustDictate" \
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
-4. **config_manager.py** — Simple JSON config at `~/.config/just-dictate/config.json`.
+4. **config_manager.py** — JSON config at `~/.config/just-dictate/config.json` and recording stats at `stats.json`.
 
 ## Configuration
 
@@ -122,6 +119,12 @@ Config file: `~/.config/just-dictate/config.json`
   "auto_type_method": "clipboard_paste",
   "add_trailing_space": true
 }
+```
+
+Stats file: `~/.config/just-dictate/stats.json`
+
+```json
+{"total_recording_seconds": 0.0, "total_recordings": 0}
 ```
 
 ### Hotkey Options
