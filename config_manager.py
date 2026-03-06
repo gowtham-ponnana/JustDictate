@@ -13,6 +13,7 @@ DEFAULTS = {
     "hotkey": "right_cmd",
     "auto_type_method": "clipboard_paste",
     "add_trailing_space": True,
+    "input_device": None,
 }
 
 HOTKEY_PRESETS = {

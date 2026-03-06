@@ -11,7 +11,7 @@ JustDictate is a macOS menu bar speech-to-text app. Hold a hotkey, speak, releas
 ```
 just_dictate.py      ← Entry point. rumps menu bar app. Ties everything together.
 ├── model_manager.py ← Loads Parakeet model via onnx-asr, handles transcription.
-├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel + Escape-to-undo.
+├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel + Escape-to-undo + input device selection.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
 └── config_manager.py   ← JSON config + stats at ~/.config/just-dictate/
 ```
@@ -63,6 +63,12 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 
 9. **Escape has three behaviors** depending on state: (1) during recording → cancel, (2) within 5s after paste → undo via Cmd+Z, (3) otherwise → pass through. All routed through `_handle_escape()`. The undo sends CGEvent Cmd+Z (keycode 6), which works in GUI apps but not terminals (where Cmd+Z sends SIGTSTP).
 
+10. **`rumps.MenuItem.clear()` crashes during `__init__`** because the internal `_menu` (NSMenu) is `None` before the menu is attached to the app. Guard with `if self.mic_menu._menu is not None` before calling `clear()`.
+
+11. **`sd.query_devices()` returns a cached device list**. When Bluetooth devices (AirPods) connect after app launch, they won't appear. Must call `sd._terminate()` + `sd._initialize()` to force PortAudio to re-query Core Audio before listing devices.
+
+12. **Device warm-up eliminates recording delay for external mics**. External devices (iPhone Continuity, AirPods, USB mics) take 1-2s to initialize on first `sd.InputStream()` open. A brief open→close cycle in `_warm_up_device()` pre-initializes the OS driver so subsequent opens are near-instant. The mic is NOT left open — only opened during actual recording.
+
 ## Running Locally
 
 ```bash
@@ -102,9 +108,12 @@ Stored at `~/.config/just-dictate/config.json`:
 {
   "hotkey": "right_cmd",
   "auto_type_method": "clipboard_paste",
-  "add_trailing_space": true
+  "add_trailing_space": true,
+  "input_device": null
 }
 ```
+
+- `input_device`: `null` = system default, or a device name string (e.g., `"MacBook Pro Microphone"`)
 
 Hotkey options: `right_cmd`, `right_alt`, `left_ctrl_left_alt`
 

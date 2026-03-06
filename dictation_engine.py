@@ -35,6 +35,7 @@ class DictationEngine:
         transcribe_fn: Callable[[np.ndarray], str] | None = None,
         on_paste_undo: Callable | None = None,
         on_recording_duration: Callable[[float], None] | None = None,
+        input_device: str | None = None,
     ):
         self.on_recording_start = on_recording_start
         self.on_recording_stop = on_recording_stop
@@ -46,6 +47,7 @@ class DictationEngine:
         self.transcribe_fn = transcribe_fn
         self.on_paste_undo = on_paste_undo
         self.on_recording_duration = on_recording_duration
+        self._input_device = input_device
 
         self._recording = False
         self._recording_start_time: float | None = None
@@ -67,6 +69,7 @@ class DictationEngine:
     def start(self) -> None:
         """Start listening for the hotkey."""
         self._load_hotkey_config()
+        self._warm_up_device()
         self._listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release,
@@ -82,6 +85,26 @@ class DictationEngine:
         if self._listener:
             self._listener.stop()
             self._listener = None
+
+    def _warm_up_device(self) -> None:
+        """Briefly open and close the audio device to pre-initialize the OS driver.
+
+        After this, subsequent InputStream opens are near-instant because the
+        device driver is already loaded. The mic is NOT left open.
+        """
+        try:
+            stream = sd.InputStream(
+                samplerate=16000,
+                channels=1,
+                dtype="float32",
+                device=self._input_device,
+            )
+            stream.start()
+            stream.stop()
+            stream.close()
+            log.info("Warmed up audio device: %s", self._input_device or "system default")
+        except Exception as e:
+            log.warning("Failed to warm up audio device: %s", e)
 
     def _get_vk(self, key) -> int | None:
         """Extract vk code from a pynput key event."""
@@ -147,6 +170,7 @@ class DictationEngine:
             dtype="float32",
             blocksize=1600,  # 100ms chunks
             callback=audio_callback,
+            device=self._input_device,
         )
         self._stream.start()
         log.info("Recording started.")

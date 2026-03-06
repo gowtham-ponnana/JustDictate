@@ -4,6 +4,7 @@ import logging
 import threading
 
 import rumps
+import sounddevice as sd
 
 from config_manager import (
     HOTKEY_PRESETS,
@@ -37,6 +38,7 @@ class JustDictateApp(rumps.App):
         self.time_item = rumps.MenuItem(
             self._format_time(stats["total_recording_seconds"])
         )
+        self.mic_menu = rumps.MenuItem("Microphone")
         self.hotkey_menu = rumps.MenuItem("Hotkey")
         self.trailing_space_item = rumps.MenuItem(
             "Add Trailing Space", callback=self._toggle_trailing_space
@@ -51,6 +53,9 @@ class JustDictateApp(rumps.App):
                 item.state = True
             self.hotkey_menu.add(item)
 
+        # Build microphone submenu
+        self._populate_mic_menu(cfg)
+
         self.trailing_space_item.state = cfg.get("add_trailing_space", True)
 
         # rumps auto-appends the quit button — don't add it here
@@ -58,6 +63,7 @@ class JustDictateApp(rumps.App):
             self.status_item,
             self.time_item,
             None,  # separator
+            self.mic_menu,
             self.hotkey_menu,
             self.trailing_space_item,
         ]
@@ -70,6 +76,18 @@ class JustDictateApp(rumps.App):
             self.model.load()
             self._update_status("Status: Ready — hold hotkey to dictate")
 
+            cfg = load_config()
+            input_device = cfg.get("input_device")
+            if input_device is not None:
+                # Verify saved device still exists
+                try:
+                    names = [d["name"] for d in sd.query_devices() if d["max_input_channels"] > 0]
+                    if input_device not in names:
+                        log.warning("Saved input device %r not found, falling back to system default.", input_device)
+                        input_device = None
+                except Exception:
+                    input_device = None
+
             self.engine = DictationEngine(
                 on_recording_start=self._on_recording_start,
                 on_recording_stop=self._on_recording_stop,
@@ -81,6 +99,7 @@ class JustDictateApp(rumps.App):
                 transcribe_fn=self.model.transcribe,
                 on_paste_undo=self._on_paste_undo,
                 on_recording_duration=self._on_recording_duration,
+                input_device=input_device,
             )
             self.engine.start()
             log.info("JustDictate ready.")
@@ -160,6 +179,69 @@ class JustDictateApp(rumps.App):
             log.error("Notification failed: %s", msg[:200])
 
     # -- Menu callbacks --
+
+    def _populate_mic_menu(self, cfg: dict) -> None:
+        """Populate the Microphone submenu with available input devices."""
+        # clear() fails before the menu is attached to NSMenu (during __init__)
+        if self.mic_menu._menu is not None:
+            self.mic_menu.clear()
+
+        saved_device = cfg.get("input_device")
+
+        # System Default option
+        default_item = rumps.MenuItem("System Default", callback=self._change_mic)
+        default_item._device_name = None
+        default_item.state = saved_device is None
+        self.mic_menu.add(default_item)
+
+        # Force PortAudio to re-query Core Audio for current device list
+        # Without this, newly connected devices (AirPods, USB mics) won't appear
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception:
+            pass
+
+        # List input devices
+        try:
+            devices = sd.query_devices()
+            seen = set()
+            for d in devices:
+                if d["max_input_channels"] > 0 and d["name"] not in seen:
+                    seen.add(d["name"])
+                    item = rumps.MenuItem(d["name"], callback=self._change_mic)
+                    item._device_name = d["name"]
+                    item.state = d["name"] == saved_device
+                    self.mic_menu.add(item)
+        except Exception as e:
+            log.warning("Failed to query audio devices: %s", e)
+
+        # Separator + Refresh
+        self.mic_menu.add(None)
+        self.mic_menu.add(rumps.MenuItem("Refresh Devices", callback=self._refresh_devices))
+
+    def _change_mic(self, sender) -> None:
+        device_name = sender._device_name
+        cfg = load_config()
+        cfg["input_device"] = device_name
+        save_config(cfg)
+
+        # Update checkmarks
+        for item in self.mic_menu.values():
+            if hasattr(item, "_device_name"):
+                item.state = item._device_name == device_name
+
+        # Update device and warm it up (pre-initializes OS driver for fast recording start)
+        if self.engine:
+            self.engine._input_device = device_name
+            threading.Thread(target=self.engine._warm_up_device, daemon=True).start()
+
+        log.info("Input device changed to: %s", device_name or "System Default")
+
+    def _refresh_devices(self, _sender) -> None:
+        cfg = load_config()
+        self._populate_mic_menu(cfg)
+        log.info("Refreshed audio device list.")
 
     def _change_hotkey(self, sender):
         key = sender._hotkey_key

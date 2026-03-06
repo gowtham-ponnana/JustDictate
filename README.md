@@ -7,6 +7,7 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 ## Features
 
 - **Hold-to-dictate** — hold Right Command (configurable), speak, release
+- **Microphone selection** — choose any input device (AirPods, iPhone Continuity mic, USB mic, etc.) from the menu bar with live refresh
 - **Escape to cancel** — press Escape while recording to discard audio and cancel
 - **Escape to undo** — press Escape within 5 seconds after a dictation to undo the pasted text (sends Cmd+Z)
 - **Recording time tracker** — cumulative recording time displayed in the menu bar, persists across restarts
@@ -16,7 +17,7 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 - **Menu bar app** — lives in the menu bar, no dock icon
 - **Fully offline** — model runs locally on CPU via ONNX Runtime
 - **Fast** — ~0.5s transcription for typical sentences
-- **Configurable** — hotkey, trailing space toggle, all from the menu bar
+- **Configurable** — hotkey, microphone, trailing space toggle, all from the menu bar
 
 ## Requirements
 
@@ -59,6 +60,7 @@ Grant these in **System Settings > Privacy & Security**:
 
 - **Status** — shows current state (loading / ready / error)
 - **Total time** — cumulative recording time (e.g., "Total: 5m 23s"), persists across restarts
+- **Microphone** — select input device (System Default, AirPods, iPhone mic, USB mic, etc.) with a Refresh Devices option for newly connected devices
 - **Hotkey** — switch between Right Command, Right Alt, or Left Ctrl + Left Alt
 - **Add Trailing Space** — toggle automatic space after each dictation
 
@@ -103,7 +105,7 @@ hdiutil create -volname "JustDictate" \
 
 1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/just-dictate/`.
 
-2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice`. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio. Pressing Escape within 5 seconds after a paste sends Cmd+Z to undo.
+2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice` with configurable input device. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio. Pressing Escape within 5 seconds after a paste sends Cmd+Z to undo. On startup and device change, a brief device warm-up (open → close) pre-initializes the OS audio driver for instant recording start — the mic is never left open when not recording.
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
@@ -117,9 +119,12 @@ Config file: `~/.config/just-dictate/config.json`
 {
   "hotkey": "right_cmd",
   "auto_type_method": "clipboard_paste",
-  "add_trailing_space": true
+  "add_trailing_space": true,
+  "input_device": null
 }
 ```
+
+- `input_device`: `null` for system default, or a device name string (e.g., `"MacBook Pro Microphone"`, `"Gowtham's AirPods"`)
 
 Stats file: `~/.config/just-dictate/stats.json`
 
@@ -151,6 +156,12 @@ Stats file: `~/.config/just-dictate/stats.json`
 
 ### "This process is not trusted!" warning
 Grant **Accessibility** and **Input Monitoring** permissions to the app (or Terminal if running from source).
+
+### Permissions reset after reinstall
+Every time you rebuild the `.app`, macOS treats it as a new binary and revokes Accessibility/Input Monitoring permissions. You must re-grant them in System Settings. This is an macOS security restriction (tied to binary code signature) and cannot be bypassed. The `install.sh` script reminds you of this after each build.
+
+### AirPods / Bluetooth mic not showing
+Click **Refresh Devices** in the Microphone submenu after connecting a new device. This forces a re-scan of Core Audio devices. Bluetooth devices (AirPods, headsets) only appear after macOS finishes the Bluetooth handshake.
 
 ### Model download fails
 Set a HuggingFace token for faster downloads: `export HF_TOKEN=hf_...`
