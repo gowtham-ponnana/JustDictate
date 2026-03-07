@@ -19,7 +19,12 @@ fi
 if ! command -v brew &>/dev/null; then
     echo "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    eval "$(/opt/homebrew/bin/brew shellenv)"
+    # Homebrew installs to /opt/homebrew (Apple Silicon) or /usr/local (Intel)
+    if [ -f /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -f /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
 fi
 
 # 3. Install uv if missing
@@ -28,24 +33,32 @@ if ! command -v uv &>/dev/null; then
     brew install uv
 fi
 
-# 4. Install Python dependencies
-echo "Installing Python dependencies..."
-uv sync
+# 4. Ensure a compatible Python is available (onnxruntime requires <3.14)
+echo "Ensuring compatible Python version..."
+uv python install 3.13
 
-# 5. Install PyInstaller into the venv
+# 5. Install Python dependencies
+echo "Installing Python dependencies..."
+uv sync --python 3.13
+
+# 6. Install PyInstaller into the venv
 echo "Installing PyInstaller..."
 uv pip install pyinstaller
 
-# 6. Clean stale build artifacts
+# 7. Clean stale build artifacts
 rm -rf dist/ build/
 
-# 7. Build with PyInstaller (pyproject.toml must be moved — see CLAUDE.md gotcha)
+# 8. Build with PyInstaller
+#    pyproject.toml is moved aside so PyInstaller doesn't pick it up as build config.
+#    Trap ensures it's restored even if the build fails.
 mv pyproject.toml pyproject.toml.bak
+trap 'mv pyproject.toml.bak pyproject.toml 2>/dev/null' EXIT
 echo "Building JustDictate.app..."
-uv run pyinstaller JustDictate.spec --clean
+.venv/bin/pyinstaller JustDictate.spec --clean
 mv pyproject.toml.bak pyproject.toml
+trap - EXIT
 
-# 8. Copy to /Applications
+# 9. Copy to /Applications
 echo "Copying to /Applications..."
 cp -R dist/JustDictate.app /Applications/
 

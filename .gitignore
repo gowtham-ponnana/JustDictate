@@ -12,6 +12,7 @@ build/
 dist/
 *.dmg
 *.spec
+!JustDictate.spec
 setup.py
 
 # macOS
