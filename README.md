@@ -10,7 +10,7 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 - **Microphone selection** — choose any input device (AirPods, iPhone Continuity mic, USB mic, etc.) from the menu bar with live refresh
 - **Escape to cancel** — press Escape while recording to discard audio and cancel
 - **Escape to undo** — press Escape within 5 seconds after a dictation to undo the pasted text (sends Cmd+Z)
-- **Recording time tracker** — cumulative recording time displayed in the menu bar, persists across restarts
+- **Recording time tracker** — monthly recording time displayed in the menu bar, auto-resets each month with history archived
 - **Completion sound** — plays a "Tink" sound when transcription finishes
 - **Auto-type** — transcribed text is pasted into whatever app is focused
 - **Floating overlay** — dark translucent window with waveform animation while recording
@@ -59,7 +59,7 @@ Grant these in **System Settings > Privacy & Security**:
 ### Menu Bar Options
 
 - **Status** — shows current state (loading / ready / error)
-- **Total time** — cumulative recording time (e.g., "Total: 5m 23s"), persists across restarts
+- **This month** — monthly recording time (e.g., "This month: 5m 23s"), auto-resets on the 1st with old data archived
 - **Microphone** — select input device (System Default, AirPods, iPhone mic, USB mic, etc.) with a Refresh Devices option for newly connected devices
 - **Hotkey** — switch between Right Command, Right Alt, or Left Ctrl + Left Alt
 - **Add Trailing Space** — toggle automatic space after each dictation
@@ -109,7 +109,7 @@ hdiutil create -volname "JustDictate" \
 
 3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
 
-4. **config_manager.py** — JSON config at `~/.config/just-dictate/config.json` and recording stats at `stats.json`.
+4. **config_manager.py** — JSON config at `~/.config/just-dictate/config.json`, monthly recording stats at `stats.json`, and archived history at `stats_history.json`.
 
 ## Configuration
 
@@ -126,10 +126,16 @@ Config file: `~/.config/just-dictate/config.json`
 
 - `input_device`: `null` for system default, or a device name string (e.g., `"MacBook Pro Microphone"`, `"Gowtham's AirPods"`)
 
-Stats file: `~/.config/just-dictate/stats.json`
+Stats file: `~/.config/just-dictate/stats.json` (resets monthly)
 
 ```json
-{"total_recording_seconds": 0.0, "total_recordings": 0}
+{"month": "2026-03", "total_recording_seconds": 0.0, "total_recordings": 0}
+```
+
+Stats history: `~/.config/just-dictate/stats_history.json` (auto-archived)
+
+```json
+{"legacy": {"total_recording_seconds": 120.5, "total_recordings": 15}, "2026-02": {"total_recording_seconds": 45.3, "total_recordings": 8}}
 ```
 
 ### Hotkey Options

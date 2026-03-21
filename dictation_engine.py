@@ -152,6 +152,7 @@ class DictationEngine:
 
     def _start_recording(self) -> None:
         self._recording = True
+        self._cancelled = False
         self._recording_start_time = time.time()
         self._audio_chunks = []
 
@@ -221,14 +222,17 @@ class DictationEngine:
 
     def _stop_recording(self) -> None:
         self._recording = False
-        duration = None
-        if self._recording_start_time is not None:
-            duration = time.time() - self._recording_start_time
-            self._recording_start_time = None
+        self._recording_start_time = None
         if self._stream:
             self._stream.stop()
             self._stream.close()
             self._stream = None
+        # Use actual audio duration instead of wall-clock time.
+        # Wall-clock inflates massively if a key release is missed by pynput
+        # (common with Cmd keys during app switching on macOS).
+        duration = None
+        if self._audio_chunks:
+            duration = sum(len(c) for c in self._audio_chunks) / 16000
         log.info("Recording stopped.")
         if self.on_recording_stop:
             self.on_recording_stop()

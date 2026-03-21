@@ -117,11 +117,21 @@ Stored at `~/.config/just-dictate/config.json`:
 
 Hotkey options: `right_cmd`, `right_alt`, `left_ctrl_left_alt`
 
-Stats at `~/.config/just-dictate/stats.json`:
+Stats at `~/.config/just-dictate/stats.json` (resets on the 1st of each month):
 
 ```json
-{"total_recording_seconds": 0.0, "total_recordings": 0}
+{"month": "2026-03", "total_recording_seconds": 0.0, "total_recordings": 0}
 ```
+
+- `month`: auto-set to current `"YYYY-MM"`. When the month changes, old stats are archived and counters reset.
+
+Archived stats at `~/.config/just-dictate/stats_history.json`:
+
+```json
+{"legacy": {"total_recording_seconds": 433718.69, "total_recordings": 340}, "2026-03": {"total_recording_seconds": 12.5, "total_recordings": 5}}
+```
+
+- `"legacy"` key holds pre-monthly-reset data (migrated automatically on first run).
 
 ## Model Cache
 

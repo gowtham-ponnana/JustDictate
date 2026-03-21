@@ -160,12 +160,12 @@ class JustDictateApp(rumps.App):
     def _format_time(seconds: float) -> str:
         s = int(seconds)
         if s < 60:
-            return f"Total: {s}s"
+            return f"This month: {s}s"
         if s < 3600:
-            return f"Total: {s // 60}m {s % 60}s"
+            return f"This month: {s // 60}m {s % 60}s"
         h = s // 3600
         m = (s % 3600) // 60
-        return f"Total: {h}h {m}m"
+        return f"This month: {h}h {m}m"
 
     def _on_paste_undo(self):
         log.info("Undo last dictation paste.")
