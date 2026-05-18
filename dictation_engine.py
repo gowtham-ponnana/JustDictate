@@ -21,6 +21,13 @@ VK_ESCAPE = 0x35
 # How long after a paste the user can press Escape to undo it
 UNDO_WINDOW = 5.0
 
+# Grace window after the hotkey fires. If another key arrives within this period
+# the recording is immediately cancelled (it's a combo like Cmd+L, not dictation).
+COMBO_GUARD_DELAY = 0.4  # seconds
+
+# Delay before showing the recording overlay. Prevents a flash for quick taps
+# or combos that are cancelled before this window elapses.
+OVERLAY_SHOW_DELAY = 0.2  # seconds
 
 class DictationEngine:
     def __init__(
@@ -58,6 +65,8 @@ class DictationEngine:
         self._held_vk: set[int] = set()
         self._listener: keyboard.Listener | None = None
         self._target_vk_codes: set[int] = set()
+        self._start_timer: threading.Timer | None = None
+        self._show_overlay_timer: threading.Timer | None = None
 
         self._load_hotkey_config()
 
@@ -135,7 +144,12 @@ class DictationEngine:
         self._held_vk.add(vk)
 
         if not self._recording and self._target_vk_codes.issubset(self._held_vk):
-            self._start_recording()
+            self._arm_start_timer()
+        elif vk not in self._target_vk_codes:
+            # A non-hotkey key arrived — cancel any pending start or active recording.
+            self._disarm_start_timer()
+            if self._recording:
+                self._cancel_recording()
 
     def _on_release(self, key) -> None:
         vk = self._get_vk(key)
@@ -143,12 +157,39 @@ class DictationEngine:
             return
         self._held_vk.discard(vk)
 
+        # Hotkey released while the combo guard is still active — cancel the recording.
+        # Either a quick tap or the user is pressing a combo (e.g. Cmd+L released).
+        if self._start_timer is not None and not self._target_vk_codes.issubset(self._held_vk):
+            self._disarm_start_timer()
+            return
+
         if self._recording and not self._target_vk_codes.issubset(self._held_vk):
             self._stop_recording()
             if self._cancelled:
                 self._cancelled = False
                 return
             threading.Thread(target=self._transcribe_and_type, daemon=True).start()
+
+    def _arm_start_timer(self) -> None:
+        """Start recording immediately; cancel within COMBO_GUARD_DELAY if a non-hotkey key arrives."""
+        self._disarm_start_timer()
+        self._start_recording()
+        self._start_timer = threading.Timer(COMBO_GUARD_DELAY, self._on_combo_guard_elapsed)
+        self._start_timer.daemon = True
+        self._start_timer.start()
+
+    def _disarm_start_timer(self) -> None:
+        """Cancel the combo guard timer and the recording it started."""
+        t = self._start_timer
+        self._start_timer = None
+        if t is not None:
+            t.cancel()
+            if self._recording:
+                self._cancel_recording()
+
+    def _on_combo_guard_elapsed(self) -> None:
+        """Timer fired — no combo key came, recording is legitimate. Clear the guard."""
+        self._start_timer = None
 
     def _start_recording(self) -> None:
         self._recording = True
@@ -176,7 +217,10 @@ class DictationEngine:
         self._stream.start()
         log.info("Recording started.")
         if self.on_recording_start:
-            self.on_recording_start()
+            t = threading.Timer(OVERLAY_SHOW_DELAY, self.on_recording_start)
+            t.daemon = True
+            self._show_overlay_timer = t
+            t.start()
 
     def _cancel_recording(self) -> None:
         """Cancel the current recording — discard audio, skip transcription."""
@@ -188,6 +232,10 @@ class DictationEngine:
             self._stream.close()
             self._stream = None
         self._audio_chunks = []
+        t = self._show_overlay_timer
+        self._show_overlay_timer = None
+        if t is not None:
+            t.cancel()
         log.info("Recording cancelled.")
         if self.on_recording_cancel:
             self.on_recording_cancel()
