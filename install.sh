@@ -33,7 +33,7 @@ if ! command -v uv &>/dev/null; then
     brew install uv
 fi
 
-# 4. Ensure a compatible Python is available (onnxruntime requires <3.14)
+# 4. Ensure a compatible Python is available (project pin is >=3.11,<3.14)
 echo "Ensuring compatible Python version..."
 uv python install 3.13
 

@@ -18,7 +18,7 @@ if ! command -v uv &>/dev/null; then
 fi
 
 echo "Starting JustDictate..."
-echo "First run will install dependencies and download the model (~2.5 GB)."
+echo "First run will install dependencies and download the MLX Parakeet model (~2.5 GB)."
 echo ""
 
 uv run python just_dictate.py

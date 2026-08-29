@@ -1,6 +1,6 @@
 # JustDictate
 
-**Hold-to-dictate speech-to-text for macOS.** Hold a hotkey, speak, release — your words are transcribed and typed into the focused app. Runs entirely on-device using [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) via ONNX. No cloud, no API keys, no GPU required.
+**Hold-to-dictate speech-to-text for macOS (Apple Silicon).** Hold a hotkey, speak, release — your words are transcribed and typed into the focused app. Runs entirely on-device using [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [MLX](https://github.com/ml-explore/mlx). No cloud, no API keys.
 
 Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps, and PyObjC.
 
@@ -15,13 +15,13 @@ Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps,
 - **Auto-type** — transcribed text is pasted into whatever app is focused
 - **Floating overlay** — dark translucent window with waveform animation while recording
 - **Menu bar app** — lives in the menu bar, no dock icon
-- **Fully offline** — model runs locally on CPU via ONNX Runtime
-- **Fast** — ~0.5s transcription for typical sentences
+- **Fully offline** — model runs locally on the Apple Silicon GPU via MLX
+- **Fast** — ~0.1s for a short sentence, ~1.4s for a minute of speech (M1 Max)
 - **Configurable** — hotkey, microphone, trailing space toggle, all from the menu bar
 
 ## Requirements
 
-- macOS 13+
+- macOS 13+ on Apple Silicon (M-series)
 - [uv](https://docs.astral.sh/uv/) — `brew install uv`
 
 ## Quick Start
@@ -33,7 +33,39 @@ chmod +x run.sh
 ./run.sh
 ```
 
-First run installs dependencies and downloads the model (~2.5 GB). Subsequent launches start in ~2 seconds.
+First run installs dependencies and downloads the MLX model (~2.5 GB) to `~/.cache/just-dictate/parakeet-mlx/`. Subsequent launches start in a few seconds.
+
+## Performance
+
+Measured on an **Apple M1 Max (32 GB)**. Realtime factor (RTFx) is `audio seconds / wall seconds` — higher is faster.
+
+JustDictate transcribes **NVIDIA Parakeet TDT 0.6B v3** in **BF16 on the Apple Silicon GPU** via [parakeet-mlx](https://github.com/senstella/parakeet-mlx).
+
+### Current backend (MLX BF16, GPU)
+
+Real speech (`say` TTS), after model warmup:
+
+| Audio | Wall time | Realtime factor |
+|---|---|---|
+| ~4s sentence | 0.11s | 36× |
+| ~32s (speech + pause) | 0.65s | 50× |
+| ~61s packed speech | 1.4s | 44× |
+
+Recordings longer than 90s are split into 60s chunks with 5s overlap.
+
+### Previous ONNX backends (same machine)
+
+These are no longer used. Numbers are here for comparison.
+
+| Backend | ~5s | ~20s | ~60s |
+|---|---|---|---|
+| ONNX INT8, CPU | 0.15s (34×) | 0.47s (43×) | 1.59s (38×) |
+| ONNX FP32, CPU | 0.25s (20×) | 0.97s (21×) | 3.08s (20×) |
+| ONNX INT8, CoreML | 0.46s (11×) | 1.95s (10×) | 7.76s (8×) |
+
+CoreML was slower than CPU INT8 on this encoder, which is why it was not used.
+
+Old ONNX caches (`parakeet-v3/`, `parakeet-v3-int8/`, `silero-vad/` under `~/.cache/just-dictate/`) are unused after the MLX switch and can be deleted.
 
 ## macOS Permissions
 
@@ -94,7 +126,7 @@ hdiutil create -volname "JustDictate" \
 │  │ model_manager│  │  dictation   │  │ floating  │ │
 │  │   .py        │  │  _engine.py  │  │ _window.py│ │
 │  │              │  │              │  │           │ │
-│  │ onnx-asr     │  │ pynput       │  │ PyObjC    │ │
+│  │ parakeet-mlx │  │ pynput       │  │ PyObjC    │ │
 │  │ Parakeet     │  │ sounddevice  │  │ NSWindow  │ │
 │  │ TDT 0.6B v3  │  │ CGEvent      │  │ waveform  │ │
 │  └──────────────┘  └──────────────┘  └───────────┘ │
@@ -103,7 +135,7 @@ hdiutil create -volname "JustDictate" \
 └─────────────────────────────────────────────────────┘
 ```
 
-1. **model_manager.py** — Downloads and loads the NVIDIA Parakeet TDT 0.6B v3 model via `onnx-asr`. Uses `CPUExecutionProvider` (CoreML is buggy on macOS). Caches to `~/.cache/just-dictate/`.
+1. **model_manager.py** — Downloads and loads NVIDIA Parakeet TDT 0.6B v3 via `parakeet-mlx` on the Apple Silicon GPU (BF16). Long recordings (>90s) are chunked in-process. Caches to `~/.cache/just-dictate/parakeet-mlx/`.
 
 2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice` with configurable input device. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio. Pressing Escape within 5 seconds after a paste sends Cmd+Z to undo. On startup and device change, a brief device warm-up (open → close) pre-initializes the OS audio driver for instant recording start — the mic is never left open when not recording.
 
@@ -150,8 +182,8 @@ Stats history: `~/.config/just-dictate/stats_history.json` (auto-archived)
 
 | Component | Library | Purpose |
 |---|---|---|
-| ASR Model | [onnx-asr](https://github.com/istupakov/onnx-asr) | NVIDIA Parakeet TDT 0.6B v3 inference |
-| Runtime | [onnxruntime](https://onnxruntime.ai/) | ONNX model execution (CPU) |
+| ASR Model | [parakeet-mlx](https://github.com/senstella/parakeet-mlx) | NVIDIA Parakeet TDT 0.6B v3 inference |
+| Runtime | [MLX](https://github.com/ml-explore/mlx) | Apple Silicon GPU (Metal) |
 | Audio | [sounddevice](https://python-sounddevice.readthedocs.io/) | Microphone recording |
 | Hotkey | [pynput](https://pynput.readthedocs.io/) | Global key listener |
 | Menu Bar | [rumps](https://github.com/jaredks/rumps) | macOS status bar app |

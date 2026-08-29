@@ -1,15 +1,14 @@
 [project]
 name = "just-dictate"
 version = "0.1.0"
-description = "macOS hold-to-dictate speech-to-text — fully offline, on-device"
+description = "macOS hold-to-dictate speech-to-text — Apple Silicon, fully offline"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "onnx-asr[cpu,hub]",
-    "onnxruntime>=1.24.2",
     "sounddevice",
     "pynput",
     "numpy",
     "rumps",
     "pyobjc-framework-Cocoa",
     "pyobjc-framework-Quartz",
+    "parakeet-mlx>=0.5.2",
 ]
