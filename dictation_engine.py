@@ -1,7 +1,6 @@
 """Hotkey detection, audio recording, and auto-typing."""
 
 import logging
-import subprocess
 import threading
 import time
 from typing import Callable
@@ -284,16 +283,11 @@ class DictationEngine:
         import Quartz
 
         try:
-            # Save current clipboard
-            old_clip = subprocess.run(
-                ["pbpaste"], capture_output=True, text=True, timeout=2
-            ).stdout
+            old_clip = _clipboard_get()
         except Exception:
             old_clip = ""
 
-        # Set new clipboard content
-        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-        p.communicate(text.encode("utf-8"))
+        _clipboard_set(text)
         time.sleep(0.05)
 
         # Cmd+V paste via CGEvent (no osascript needed)
@@ -307,6 +301,30 @@ class DictationEngine:
         Quartz.CGEventPost(Quartz.kCGAnnotatedSessionEventTap, cmd_up)
         time.sleep(0.15)
 
-        # Restore old clipboard
-        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-        p.communicate(old_clip.encode("utf-8"))
+        try:
+            _clipboard_set(old_clip)
+        except Exception as e:
+            log.warning("Failed to restore clipboard: %s", e)
+
+
+def _clipboard_get() -> str:
+    """Read the clipboard as Unicode text (NSPasteboard, not pbcopy)."""
+    from AppKit import NSPasteboard, NSPasteboardTypeString
+
+    value = NSPasteboard.generalPasteboard().stringForType_(NSPasteboardTypeString)
+    return str(value) if value else ""
+
+
+def _clipboard_set(text: str) -> None:
+    """Write Unicode text to the clipboard.
+
+    pbcopy without a UTF-8 locale tags the pasteboard as MacRoman, which
+    turns UTF-8 umlauts into mojibake (ä → √§). NSPasteboard stores UTF-8
+    natively.
+    """
+    from AppKit import NSPasteboard, NSPasteboardTypeString
+
+    pb = NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    if not pb.setString_forType_(text, NSPasteboardTypeString):
+        raise RuntimeError("NSPasteboard rejected the clipboard string")

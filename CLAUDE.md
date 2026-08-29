@@ -38,6 +38,7 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 ### Why CGEvent for paste (not osascript)?
 - `osascript` requires its own Accessibility permission and has timeout issues
 - CGEvent works with the same Accessibility permission that pynput already needs
+- Clipboard write uses `NSPasteboard`, not `pbcopy`. `pbcopy` without a UTF-8 locale tags the pasteboard as MacRoman, so UTF-8 umlauts paste as `√§` / `√∂` / etc.
 
 ### Why uv?
 - Pins Python to >=3.11,<3.14 so the MLX / numpy / rumps stack stays compatible
