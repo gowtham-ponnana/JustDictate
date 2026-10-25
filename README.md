@@ -1,215 +1,162 @@
 # JustDictate
 
-**Hold-to-dictate speech-to-text for macOS (Apple Silicon).** Hold a hotkey, speak, release — your words are transcribed and typed into the focused app. Runs entirely on-device using [NVIDIA Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) via [MLX](https://github.com/ml-explore/mlx). No cloud, no API keys.
+**Fast, local dictation for Macs with Apple Silicon.** Hold Right Command, speak,
+and release to paste your words into the focused app. JustDictate uses NVIDIA
+Parakeet TDT 0.6B v3 on the Apple Silicon GPU and learns recurring text corrections
+from your edits in supported apps.
 
-Inspired by [SuperWhisper](https://superwhisper.com/). Built with Python, rumps, and PyObjC.
+Audio, transcripts, and personal learning stay on your Mac. No cloud transcription,
+account, or API key is required.
 
-## Features
+## Install as a Mac app
 
-- **Hold-to-dictate** — hold Right Command (configurable), speak, release
-- **Microphone selection** — choose any input device (AirPods, iPhone Continuity mic, USB mic, etc.) from the menu bar with live refresh
-- **Escape to cancel** — press Escape while recording to discard audio and cancel
-- **Escape to undo** — press Escape within 5 seconds after a dictation to undo the pasted text (sends Cmd+Z)
-- **Recording time tracker** — monthly recording time displayed in the menu bar, auto-resets each month with history archived
-- **Completion sound** — plays a "Tink" sound when transcription finishes
-- **Auto-type** — transcribed text is pasted into whatever app is focused
-- **Floating overlay** — dark translucent window with waveform animation while recording
-- **Menu bar app** — lives in the menu bar, no dock icon
-- **Fully offline** — model runs locally on the Apple Silicon GPU via MLX
-- **Fast** — ~0.1s for a short sentence, ~1.4s for a minute of speech (M1 Max)
-- **Configurable** — hotkey, microphone, trailing space toggle, all from the menu bar
-
-## Requirements
-
-- macOS 13+ on Apple Silicon (M-series)
-- [uv](https://docs.astral.sh/uv/) — `brew install uv`
-
-## Quick Start
-
-```bash
-git clone https://github.com/gowtham-ponnana/JustDictate.git
-cd JustDictate
-chmod +x run.sh
-./run.sh
-```
-
-First run installs dependencies and downloads the MLX model (~2.5 GB) to `~/.cache/just-dictate/parakeet-mlx/`. Subsequent launches start in a few seconds.
-
-## Performance
-
-Measured on an **Apple M1 Max (32 GB)**. Realtime factor (RTFx) is `audio seconds / wall seconds` — higher is faster.
-
-JustDictate transcribes **NVIDIA Parakeet TDT 0.6B v3** in **BF16 on the Apple Silicon GPU** via [parakeet-mlx](https://github.com/senstella/parakeet-mlx).
-
-### Current backend (MLX BF16, GPU)
-
-Real speech (`say` TTS), after model warmup:
-
-| Audio | Wall time | Realtime factor |
-|---|---|---|
-| ~4s sentence | 0.11s | 36× |
-| ~32s (speech + pause) | 0.65s | 50× |
-| ~61s packed speech | 1.4s | 44× |
-
-Recordings longer than 90s are split into 60s chunks with 5s overlap.
-
-### Previous ONNX backends (same machine)
-
-These are no longer used. Numbers are here for comparison.
-
-| Backend | ~5s | ~20s | ~60s |
-|---|---|---|---|
-| ONNX INT8, CPU | 0.15s (34×) | 0.47s (43×) | 1.59s (38×) |
-| ONNX FP32, CPU | 0.25s (20×) | 0.97s (21×) | 3.08s (20×) |
-| ONNX INT8, CoreML | 0.46s (11×) | 1.95s (10×) | 7.76s (8×) |
-
-CoreML was slower than CPU INT8 on this encoder, which is why it was not used.
-
-Old ONNX caches (`parakeet-v3/`, `parakeet-v3-int8/`, `silero-vad/` under `~/.cache/just-dictate/`) are unused after the MLX switch and can be deleted.
-
-## macOS Permissions
-
-Grant these in **System Settings > Privacy & Security**:
-
-| Permission | Why |
-|---|---|
-| **Microphone** | Record audio for transcription |
-| **Accessibility** | Detect hotkey + paste text via CGEvent |
-| **Input Monitoring** | Global hotkey listener (pynput) |
-
-## Usage
-
-1. **Launch** — a 🎙 icon appears in the menu bar
-2. **Hold Right Command** — a floating overlay appears and recording starts
-3. **Speak** — waveform animates in real time
-4. **Release** — audio is transcribed, typed into the focused app, and a completion sound plays
-5. **Cancel** — press **Escape** while recording to discard and cancel (no transcription)
-6. **Undo** — press **Escape** within 5 seconds after a dictation to undo the pasted text
-
-> **Note:** Escape-to-undo sends Cmd+Z, which works in most GUI apps. In terminals, Cmd+Z may send SIGTSTP (suspend) instead of undo.
-
-### Menu Bar Options
-
-- **Status** — shows current state (loading / ready / error)
-- **This month** — monthly recording time (e.g., "This month: 5m 23s"), auto-resets on the 1st with old data archived
-- **Microphone** — select input device (System Default, AirPods, iPhone mic, USB mic, etc.) with a Refresh Devices option for newly connected devices
-- **Hotkey** — switch between Right Command, Right Alt, or Left Ctrl + Left Alt
-- **Add Trailing Space** — toggle automatic space after each dictation
-
-## Install as App
-
-Build and install to `/Applications` with a single script:
+Requires **macOS 14+ and an Apple Silicon Mac** for the current MLX dependencies.
+These commands build and install the app locally. Run in Terminal:
 
 ```bash
 git clone https://github.com/gowtham-ponnana/JustDictate.git
 cd JustDictate
 chmod +x install.sh
 ./install.sh
+open /Applications/JustDictate.app
 ```
 
-This handles everything: Homebrew, uv, Python dependencies, PyInstaller build, and copy to `/Applications`. No manual steps. Then grant permissions to `JustDictate.app` instead of Terminal.
+The installer prepares dependencies, builds the app, and installs it in
+`/Applications`. The first launch downloads the model, approximately **2.5 GB**.
+An existing app is replaced only after the new build is verified; the previous
+version is kept at `/Applications/.JustDictate.previous.app`.
 
-### Creating a DMG
+In **System Settings → Privacy & Security**, enable JustDictate under
+**Microphone**, **Accessibility**, and **Input Monitoring**. Wait for the menu
+bar status to say **Ready**.
+
+After rebuilding, macOS may require fresh permissions. Quit JustDictate, remove
+and re-add `/Applications/JustDictate.app` in Accessibility, enable the relevant
+permissions, and reopen it. **Retry Hotkey Setup** retries startup after a grant.
+
+To update, run these commands from your existing JustDictate checkout:
 
 ```bash
-hdiutil create -volname "JustDictate" \
-  -srcfolder dist/JustDictate.app \
-  -ov -format UDZO JustDictate.dmg
+git pull --ff-only
+./install.sh
+open /Applications/JustDictate.app
 ```
 
-## How It Works
+## How to use it
 
-```
-┌─────────────────────────────────────────────────────┐
-│  just_dictate.py (rumps menu bar app)               │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │ model_manager│  │  dictation   │  │ floating  │ │
-│  │   .py        │  │  _engine.py  │  │ _window.py│ │
-│  │              │  │              │  │           │ │
-│  │ parakeet-mlx │  │ pynput       │  │ PyObjC    │ │
-│  │ Parakeet     │  │ sounddevice  │  │ NSWindow  │ │
-│  │ TDT 0.6B v3  │  │ CGEvent      │  │ waveform  │ │
-│  └──────────────┘  └──────────────┘  └───────────┘ │
-│                                                     │
-│  config_manager.py — ~/.config/just-dictate/        │
-└─────────────────────────────────────────────────────┘
-```
+1. Click the text field where you want to write.
+2. Hold **Right Command**, speak, then release. A waveform shows recording;
+   a completion sound signals transcription has finished.
+3. Correct a word in the pasted sentence when needed. In compatible editors,
+   small corrections are saved as learning examples after **one minute without
+   further edits**. Each new edit restarts that minute; text can be revisited
+   within the 15-minute tracking window.
+4. Open **Personalization → Review Recent Dictations** to see entries marked
+   **edit captured**, or review a transcript manually.
 
-1. **model_manager.py** — Downloads and loads NVIDIA Parakeet TDT 0.6B v3 via `parakeet-mlx` on the Apple Silicon GPU (BF16). Long recordings (>90s) are chunked in-process. Caches to `~/.cache/just-dictate/parakeet-mlx/`.
+The menu lets you change the microphone and hotkey. **Escape** cancels a recording;
+within five seconds after a paste, it sends the focused app's Undo command.
+Automatic correction capture has been tested in TextEdit and native Cocoa text
+fields. Other editors depend on their Accessibility support.
 
-2. **dictation_engine.py** — Listens for hotkey via `pynput` using macOS virtual key codes. Records audio at 16kHz mono via `sounddevice` with configurable input device. On release, transcribes and pastes via clipboard + CGEvent Cmd+V. Pressing Escape during recording cancels and discards audio. Pressing Escape within 5 seconds after a paste sends Cmd+Z to undo. On startup and device change, a brief device warm-up (open → close) pre-initializes the OS audio driver for instant recording start — the mic is never left open when not recording.
+## Measured performance
 
-3. **floating_window.py** — Native macOS overlay using PyObjC `NSWindow` with `NSVisualEffectView` blur. Custom `WaveformView` draws animated bars from real-time RMS levels.
+On an **Apple M1 Max**, the included benchmark measured **15–32% less transcription
+time** than the previous JustDictate implementation:
 
-4. **config_manager.py** — JSON config at `~/.config/just-dictate/config.json`, monthly recording stats at `stats.json`, and archived history at `stats_history.json`.
+| Synthetic audio | Previous JustDictate | Optimized JustDictate | Speedup |
+|---|---:|---:|---:|
+| Short sentence, 3.3 seconds | 77.3 ms | **65.3 ms** | 1.18× |
+| Numbers, 5.4 seconds | 123.5 ms | **95.7 ms** | 1.29× |
+| Technical sentence, 6.4 seconds | 140.1 ms | **95.9 ms** | 1.46× |
+| Repeated speech, 114 seconds | 2.398 s | **1.658 s** | 1.45× |
 
-## Configuration
+These are medians of three alternating trials after warmup, using the same BF16
+model with `parakeet-mlx 0.5.2` and `MLX 0.32.2`, compared with commit `37d562a`.
+The tested text, token IDs, and timestamps matched. Times cover transcription;
+startup, recording, and delivery into another app are outside this measurement.
+[Raw results](benchmarks/model_m1_max.json) · [Benchmark script](tools/benchmark_model.py)
 
-Config file: `~/.config/just-dictate/config.json`
+The decoder reuses unchanged predictor work, reduces GPU decision reads, and
+skips redundant overlap processing in long recordings. Model warmup happens at
+startup. Clipboard restoration runs after completion feedback. Edit capture and
+its bounded retry share the existing wait before paste.
 
-```json
-{
-  "hotkey": "right_cmd",
-  "auto_type_method": "clipboard_paste",
-  "add_trailing_space": true,
-  "input_device": null
-}
-```
+### Compared with Wispr Flow and superwhisper
 
-- `input_device`: `null` for system default, or a device name string (e.g., `"MacBook Pro Microphone"`, `"Gowtham's AirPods"`)
+**A matching end-to-end speed comparison with JustDictate is still pending.**
+For reference, the [Talkify-maintained benchmark](https://github.com/tornikegomareli/talkify-latency-bench/blob/main/RESULTS.md)
+reported these measurements from August 2026: 20 trials of one short phrase on an
+**M4 Max, macOS 26**, timed from stopping recording to final visible text.
 
-Stats file: `~/.config/just-dictate/stats.json` (resets monthly)
+| App and mode tested | Median wait | P95 wait |
+|---|---:|---:|
+| JustDictate | Not measured with this harness | — |
+| Wispr Flow 1.6.492, cloud | 587 ms | 693 ms |
+| superwhisper 2.16.1, Standard EN local | 216 ms | 247 ms |
 
-```json
-{"month": "2026-03", "total_recording_seconds": 0.0, "total_recordings": 0}
-```
+Those are another product developer's measurements of specific versions.
+Their hardware, audio, and timing boundaries differ from our transcription
+benchmark above, so the two tables cannot establish a speed or accuracy ranking
+for JustDictate. P95 means 95% of measured waits were at or below that value.
 
-Stats history: `~/.config/just-dictate/stats_history.json` (auto-archived)
+## Automatic local learning
 
-```json
-{"legacy": {"total_recording_seconds": 120.5, "total_recordings": 15}, "2026-02": {"total_recording_seconds": 45.3, "total_recordings": 8}}
-```
+JustDictate updates a **small personal text-correction model** from corrected or
+reviewed transcripts. Parakeet's speech-recognition weights stay unchanged;
+recordings are kept for playback and review, not acoustic training. Learned
+corrections apply to future dictations after recognition.
 
-### Hotkey Options
+For example, repeated corrections can teach `ask Gotham tomorrow` →
+`ask Gowtham tomorrow`, while keeping `visit Gotham yesterday` unchanged.
+Learning aims to reduce repeated editing; the speed improvements above come
+from the recognition and delivery pipeline.
 
-| Preset | Keys | Config Value |
-|---|---|---|
-| Right Command | ⌘R | `right_cmd` |
-| Right Alt/Option | ⌥R | `right_alt` |
-| Left Ctrl + Left Alt | ⌃L + ⌥L | `left_ctrl_left_alt` |
+- **Calendar-month schedule:** the first automatic update becomes eligible in
+  the month after enrollment. Starting October 25 makes November the first
+  eligible month; this is not a rolling 30-day timer.
+- **Automatic checks:** on startup and every minute while the app is running.
+  Training waits until dictation and correction tracking are idle. Tracking can
+  last up to 15 minutes after a paste. A closed app catches up after reopening.
+- **Enough evidence first:** at least **12 distinct corrected or reviewed
+  transcripts** are required. Repeating the same sentence does not create more
+  independent examples. New corrections need support from multiple examples.
+- **Validation before activation:** at least 20% of examples, with a minimum of
+  three, are held out from training. An update must reduce their errors without
+  worsening any held-out example. Otherwise, the current model stays active.
+- **Cleanup after success:** used training and validation transcripts and their
+  audio are deleted. Learned corrections and one previous version remain.
 
-## Tech Stack
+No monthly approval prompt is needed. An individual edit does not immediately
+change the model, and an update is not guaranteed every month if evidence is
+insufficient. **Personalization → Learning Details…** shows the status and next
+check. **Check for Learning Update** requests an earlier check when idle, using
+the same validation requirements. **Restore Previous Learning** rolls back rules;
+it cannot restore deleted training data.
 
-| Component | Library | Purpose |
-|---|---|---|
-| ASR Model | [parakeet-mlx](https://github.com/senstella/parakeet-mlx) | NVIDIA Parakeet TDT 0.6B v3 inference |
-| Runtime | [MLX](https://github.com/ml-explore/mlx) | Apple Silicon GPU (Metal) |
-| Audio | [sounddevice](https://python-sounddevice.readthedocs.io/) | Microphone recording |
-| Hotkey | [pynput](https://pynput.readthedocs.io/) | Global key listener |
-| Menu Bar | [rumps](https://github.com/jaredks/rumps) | macOS status bar app |
-| UI | [PyObjC](https://pyobjc.readthedocs.io/) | Native NSWindow overlay |
-| Packaging | [uv](https://docs.astral.sh/uv/) | Python version + dependency management |
+## Local data and controls
 
-## Troubleshooting
+Local history, audio retention, and automatic edit learning are **on by default**
+for new settings. They can be switched off in **Personalization**; existing off
+preferences are respected. History lives in
+`~/.config/just-dictate/personalization/`.
 
-### "This process is not trusted!" warning
-Grant **Accessibility** and **Input Monitoring** permissions to the app (or Terminal if running from source).
+- Unused history is retained for up to **90 days**, with limits of **2,000
+  dictations** and **256 MiB of audio**. Audio is saved only for clips up to two
+  minutes; older audio may be removed before its transcript. Maintenance runs
+  while the app is open.
+- Surrounding editor text is used in memory to verify corrections to a pasted
+  span. Only the dictation and its correction enter learning history. Automatic
+  edit observation skips secure, read-only, and unsupported fields.
+- Disabling learning preserves existing data. **Delete Learning Data** removes
+  recordings, transcripts, learned corrections, and rollback state. Local files
+  have restricted user permissions and are not separately encrypted by the app.
 
-### Permissions reset after reinstall
-Every time you rebuild the `.app`, macOS treats it as a new binary and revokes Accessibility/Input Monitoring permissions. You must re-grant them in System Settings. This is an macOS security restriction (tied to binary code signature) and cannot be bypassed. The `install.sh` script reminds you of this after each build.
-
-### AirPods / Bluetooth mic not showing
-Click **Refresh Devices** in the Microphone submenu after connecting a new device. This forces a re-scan of Core Audio devices. Bluetooth devices (AirPods, headsets) only appear after macOS finishes the Bluetooth handshake.
-
-### Model download fails
-Set a HuggingFace token for faster downloads: `export HF_TOKEN=hf_...`
-
-### No text appears after transcription
-Check **Accessibility** permission — needed for CGEvent keystroke injection.
-
-### App won't launch (Python 3.14)
-This app requires Python 3.11–3.13. `uv` handles this automatically via `run.sh`. If running manually, ensure you're not using Python 3.14+.
+Setup downloads dependencies and model files. Cached transcription works offline;
+model loading may contact Hugging Face for files or metadata. Dictation audio and
+transcripts are not uploaded.
 
 ## License
 
-MIT
+MIT. The adapted Parakeet decoder retains its upstream
+[Apache-2.0 license](licenses/parakeet-mlx.txt).

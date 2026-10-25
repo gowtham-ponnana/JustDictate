@@ -10,5 +10,6 @@ dependencies = [
     "rumps",
     "pyobjc-framework-Cocoa",
     "pyobjc-framework-Quartz",
+    "pyobjc-framework-ApplicationServices",
     "parakeet-mlx>=0.5.2",
 ]

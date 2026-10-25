@@ -23,11 +23,13 @@ TARGET_SAMPLE_RATE = 16000
 
 
 class ModelManager:
-    def __init__(self):
+    def __init__(self, *, fast_decode: bool = True):
         self._model = None
         self._loading = False
         self._infer_lock = threading.Lock()
         self._dtype = None
+        self._fast_decode_requested = fast_decode
+        self._fast_decode = False
 
     @property
     def is_loaded(self) -> bool:
@@ -65,6 +67,12 @@ class ModelManager:
                 cache_dir=str(MLX_CACHE_DIR),
             )
             self._model.eval()
+            # This adapter is verified against 0.5.2's exact greedy algorithm.
+            # New library versions retain the upstream path until revalidated.
+            self._fast_decode = (
+                self._fast_decode_requested
+                and _supports_fast_decode(self._model)
+            )
             log.info("MLX model loaded on %s.", mx.default_device())
 
             # Pay Metal/kernel init now so the first real dictation is fast.
@@ -79,6 +87,15 @@ class ModelManager:
         if self._model is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
+        audio = np.asarray(audio)
+        if audio.ndim not in (1, 2) or (audio.ndim == 2 and audio.shape[1] == 0):
+            raise ValueError("Audio must be a mono array or a frames-by-channels array.")
+        if not isinstance(sample_rate, (int, np.integer)) or sample_rate <= 0:
+            raise ValueError("Sample rate must be a positive integer.")
+        if not np.isfinite(audio).all():
+            raise ValueError("Audio contains non-finite samples.")
+        if audio.size == 0:
+            return ""
         if audio.dtype != np.float32:
             audio = audio.astype(np.float32)
         if audio.ndim > 1:
@@ -115,7 +132,7 @@ class ModelManager:
         duration = len(audio) / sample_rate
         if duration <= LONG_AUDIO_S:
             mel = get_logmel(audio_mx, self._model.preprocessor_config)
-            result = self._model.generate(mel)[0]
+            result = self._generate(mel)
             return (result.text or "").strip()
         return self._transcribe_chunked(audio_mx, sample_rate)
 
@@ -140,7 +157,7 @@ class ModelManager:
             if end - start < cfg.hop_length:
                 break
             chunk = audio_mx[start:end]
-            result = self._model.generate(get_logmel(chunk, cfg))[0]
+            result = self._generate(get_logmel(chunk, cfg))
             offset = start / sample_rate
             for sentence in result.sentences:
                 for token in sentence.tokens:
@@ -161,10 +178,108 @@ class ModelManager:
                     )
             else:
                 all_tokens = list(result.tokens)
+            # A final window may already include the entire remaining tail.
+            # Iterating once more would decode only its overlap, duplicating
+            # work and potentially replacing a well-contextualized ending.
+            if end == n:
+                break
 
         if not all_tokens:
             return ""
         return sentences_to_result(tokens_to_sentences(all_tokens)).text.strip()
+
+    def _generate(self, mel):
+        if not self._fast_decode:
+            return self._model.generate(mel)[0]
+        return _generate_greedy_text(self._model, mel)
+
+
+def _supports_fast_decode(model) -> bool:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        if version("parakeet-mlx") != "0.5.2":
+            return False
+        from parakeet_mlx.parakeet import ParakeetTDT
+    except (PackageNotFoundError, ImportError):
+        # Frozen app bundles may lack distribution metadata. A future library
+        # may move its classes. Both cases must retain working upstream inference.
+        return False
+    return type(model) is ParakeetTDT
+
+
+def _generate_greedy_text(model, mel):
+    """Single-utterance TDT greedy inference, equivalent to parakeet-mlx 0.5.2.
+
+    Adapted from senstella/parakeet-mlx's ParakeetTDT.decode_greedy (Apache-2.0).
+    Upstream license: licenses/parakeet-mlx.txt.
+
+    Preserve token selection, duration selection, BF16 state, and the decoder's
+    zero-duration guard. Reuse the predictor only across blanks (its inputs
+    remain identical), and fetch both argmax decisions in one synchronization.
+    We do not compute confidence entropy: JustDictate only consumes text and
+    token timestamps. The returned internal alignment confidence is therefore
+    not a measured confidence and must never be used to authorize corrections.
+    """
+    import mlx.core as mx
+    from parakeet_mlx.alignment import (
+        AlignedToken,
+        sentences_to_result,
+        tokens_to_sentences,
+    )
+    from parakeet_mlx.tokenizer import decode
+
+    features, lengths = model.encoder(mel)
+    mx.eval(features, lengths)
+    if features.shape[0] != 1:
+        raise ValueError("Fast decoding supports one utterance at a time.")
+    length = int(lengths[0])
+    blank = len(model.vocabulary)
+    step = 0
+    new_symbols = 0
+    last_token = None
+    hidden_state = None
+    decoder_out = None
+    hypothesis = []
+    while step < length:
+        if decoder_out is None:
+            decoder_out, (hidden, cell) = model.decoder(
+                mx.array([[last_token]]) if last_token is not None else None,
+                hidden_state,
+            )
+            decoder_out = decoder_out.astype(features.dtype)
+            decoder_hidden = (hidden.astype(features.dtype), cell.astype(features.dtype))
+
+        joint_out = model.joint(features[:, step : step + 1], decoder_out)
+        pred_token, decision = mx.stack(
+            [
+                mx.argmax(joint_out[0, 0, :, : blank + 1]),
+                mx.argmax(joint_out[0, 0, :, blank + 1 :]),
+            ]
+        ).tolist()
+        duration = model.durations[decision]
+        if pred_token != blank:
+            hypothesis.append(
+                AlignedToken(
+                    pred_token,
+                    text=decode([pred_token], model.vocabulary),
+                    start=step * model.time_ratio,
+                    duration=duration * model.time_ratio,
+                )
+            )
+            last_token = pred_token
+            hidden_state = decoder_hidden
+            decoder_out = None
+
+        step += duration
+        new_symbols += 1
+        if duration != 0:
+            new_symbols = 0
+        elif model.max_symbols is not None and model.max_symbols <= new_symbols:
+            step += 1
+            new_symbols = 0
+
+    return sentences_to_result(tokens_to_sentences(hypothesis))
 
 
 def _resample_linear(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:

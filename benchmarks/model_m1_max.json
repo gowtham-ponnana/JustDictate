@@ -1,0 +1,116 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "parakeet_mlx": "0.5.2",
+  "mlx": "0.32.2",
+  "baseline_ref": "37d562add87b327b8219a7214a56c5dd682afeb1",
+  "fast_decode_enabled": true,
+  "rounds": 3,
+  "cases": [
+    {
+      "case": "short",
+      "audio_seconds": 3.2809375,
+      "token_ids_and_timestamps_match": true,
+      "end_to_end_text_matches": true,
+      "baseline_median_seconds": 0.077269,
+      "optimized_median_seconds": 0.065321,
+      "speedup": 1.183,
+      "baseline_seconds": [
+        0.07672708300378872,
+        0.07726879099936923,
+        0.08022604199504713
+      ],
+      "optimized_seconds": [
+        0.06327695800428046,
+        0.06532087500090711,
+        0.06582375000289176
+      ],
+      "baseline_text": "Please send the final report before tomorrow morning.",
+      "optimized_text": "Please send the final report before tomorrow morning."
+    },
+    {
+      "case": "numbers",
+      "audio_seconds": 5.40775,
+      "token_ids_and_timestamps_match": true,
+      "end_to_end_text_matches": true,
+      "baseline_median_seconds": 0.123489,
+      "optimized_median_seconds": 0.095658,
+      "speedup": 1.291,
+      "baseline_seconds": [
+        0.11810058399714762,
+        0.1241545830052928,
+        0.12348895800096216
+      ],
+      "optimized_seconds": [
+        0.09298095799749717,
+        0.095657999998366,
+        0.10145750000083353
+      ],
+      "baseline_text": "The meeting starts at 3 30. Please bring 25 copies, not 15.",
+      "optimized_text": "The meeting starts at 3 30. Please bring 25 copies, not 15."
+    },
+    {
+      "case": "technical",
+      "audio_seconds": 6.4178125,
+      "token_ids_and_timestamps_match": true,
+      "end_to_end_text_matches": true,
+      "baseline_median_seconds": 0.140082,
+      "optimized_median_seconds": 0.095882,
+      "speedup": 1.461,
+      "baseline_seconds": [
+        0.12059679200319806,
+        0.14008150000154274,
+        0.18069312500301749
+      ],
+      "optimized_seconds": [
+        0.09407841700158315,
+        0.09588166599860415,
+        0.14042104100371944
+      ],
+      "baseline_text": "The database connection timed out, restart the background worker, then check the authentication token.",
+      "optimized_text": "The database connection timed out, restart the background worker, then check the authentication token."
+    },
+    {
+      "case": "silence",
+      "audio_seconds": 4.0,
+      "token_ids_and_timestamps_match": true,
+      "end_to_end_text_matches": true,
+      "baseline_median_seconds": 0.099903,
+      "optimized_median_seconds": 0.068543,
+      "speedup": 1.458,
+      "baseline_seconds": [
+        0.09370691700314637,
+        0.09990345799451461,
+        0.10000879099970916
+      ],
+      "optimized_seconds": [
+        0.0674050419984269,
+        0.0685432500031311,
+        0.06968229199992493
+      ],
+      "baseline_text": "",
+      "optimized_text": ""
+    },
+    {
+      "case": "long_overlap_tail",
+      "audio_seconds": 114.0,
+      "token_ids_and_timestamps_match": true,
+      "end_to_end_text_matches": true,
+      "baseline_median_seconds": 2.398417,
+      "optimized_median_seconds": 1.657621,
+      "speedup": 1.447,
+      "baseline_seconds": [
+        2.380010749999201,
+        2.3984169169998495,
+        2.5195813749960507
+      ],
+      "optimized_seconds": [
+        1.8698736249934882,
+        1.6576206250028918,
+        1.4721999999965192
+      ],
+      "baseline_text": "The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background.",
+      "optimized_text": "The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background worker. Then check the authentication token. The database connection timed out. Restart the background."
+    }
+  ],
+  "hardware": "Apple M1 Max"
+}

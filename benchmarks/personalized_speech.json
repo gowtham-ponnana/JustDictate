@@ -1,0 +1,182 @@
+{
+  "training_count": 18,
+  "training_raw_error_total": 19,
+  "training": [
+    {
+      "reference": "Please ask Gowtham tomorrow about the quarterly budget.",
+      "raw": "Please ask Gotham tomorrow about the quarterly budget.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about our next meeting.",
+      "raw": "Please ask Gotham tomorrow about our next meeting.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the project deadline.",
+      "raw": "Please ask Gotham tomorrow about the project deadline.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the security review.",
+      "raw": "Please ask Gotham tomorrow about the security review.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the database backup.",
+      "raw": "Please ask Gotham tomorrow about the database backup.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the customer survey.",
+      "raw": "Please ask Gotham tomorrow about the customer survey.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the product launch.",
+      "raw": "Please ask Gotham tomorrow about the product launch.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the server upgrade.",
+      "raw": "Please ask Gotham tomorrow about the server upgrade.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the invoice number.",
+      "raw": "Please ask Gotham tomorrow about the invoice number.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the hiring plan.",
+      "raw": "Please ask Gotham tomorrow about the Hayarind plan.",
+      "errors": 2
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the vacation schedule.",
+      "raw": "Please ask Gotham tomorrow about the vacation schedule.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the network outage.",
+      "raw": "Please ask Gotham tomorrow about the network outage.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the design proposal.",
+      "raw": "Please ask Gotham tomorrow about the design proposal.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the training session.",
+      "raw": "Please ask Gotham tomorrow about the training session.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the presentation slides.",
+      "raw": "Please ask Gotham tomorrow about the presentation slides.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the delivery address.",
+      "raw": "Please ask Gotham tomorrow about the delivery address.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the test results.",
+      "raw": "Please ask Gotham tomorrow about the test results.",
+      "errors": 1
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the release notes.",
+      "raw": "Please ask Gotham tomorrow about the release notes.",
+      "errors": 1
+    }
+  ],
+  "training_result": {
+    "status": "trained",
+    "reason": "Validated improvement",
+    "reviewed_count": 18,
+    "month": "2026-10",
+    "revision": 18,
+    "metrics": {
+      "training_examples": 14,
+      "validation_examples": 4,
+      "baseline_errors": 4,
+      "previous_errors": 4,
+      "candidate_errors": 0,
+      "validation_tokens": 36
+    },
+    "rule_count": 1
+  },
+  "unseen": [
+    {
+      "reference": "Please ask Gowtham tomorrow about the office keys.",
+      "raw": "Please ask Gotham tomorrow about the office keys.",
+      "personalized": "Please ask Gowtham tomorrow about the office keys.",
+      "baseline_errors": 1,
+      "personalized_errors": 0,
+      "control": false
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the travel arrangements.",
+      "raw": "Please ask Gotham tomorrow about the travel arrangements.",
+      "personalized": "Please ask Gowtham tomorrow about the travel arrangements.",
+      "baseline_errors": 1,
+      "personalized_errors": 0,
+      "control": false
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the annual report.",
+      "raw": "Please ask Gotham tomorrow about the annual report.",
+      "personalized": "Please ask Gowtham tomorrow about the annual report.",
+      "baseline_errors": 1,
+      "personalized_errors": 0,
+      "control": false
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the support request.",
+      "raw": "Please ask Gotham tomorrow about the support request.",
+      "personalized": "Please ask Gowtham tomorrow about the support request.",
+      "baseline_errors": 1,
+      "personalized_errors": 0,
+      "control": false
+    },
+    {
+      "reference": "Please ask Gowtham tomorrow about the performance issue.",
+      "raw": "Please ask Gotham tomorrow about the performance issue.",
+      "personalized": "Please ask Gowtham tomorrow about the performance issue.",
+      "baseline_errors": 1,
+      "personalized_errors": 0,
+      "control": false
+    },
+    {
+      "reference": "Batman protects Gotham City from criminals.",
+      "raw": "Batman protects Gotham City from criminals.",
+      "personalized": "Batman protects Gotham City from criminals.",
+      "baseline_errors": 0,
+      "personalized_errors": 0,
+      "control": true
+    },
+    {
+      "reference": "The train to Gotham City leaves tomorrow.",
+      "raw": "The train to Gotham City leaves tomorrow.",
+      "personalized": "The train to Gotham City leaves tomorrow.",
+      "baseline_errors": 0,
+      "personalized_errors": 0,
+      "control": true
+    },
+    {
+      "reference": "Please ask Sarah tomorrow about the quarterly budget.",
+      "raw": "Please ask Saraha tomorrow about the quarterly budget.",
+      "personalized": "Please ask Saraha tomorrow about the quarterly budget.",
+      "baseline_errors": 1,
+      "personalized_errors": 1,
+      "control": true
+    }
+  ],
+  "unseen_name_baseline_errors": 5,
+  "unseen_name_personalized_errors": 0,
+  "controls_unchanged": true,
+  "elapsed_seconds": 25.78639845900034
+}

@@ -1,6 +1,8 @@
 """JSON config read/write at ~/.config/just-dictate/config.json"""
 
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +18,10 @@ DEFAULTS = {
     "auto_type_method": "clipboard_paste",
     "add_trailing_space": True,
     "input_device": None,
+    "personalization_enabled": True,
+    "retain_personalization_audio": True,
+    "learn_from_edits": True,
+    "personalization_retention_days": 90,
 }
 
 HOTKEY_PRESETS = {
@@ -45,9 +51,22 @@ def load() -> dict:
 
 def save(cfg: dict) -> None:
     """Persist config to disk."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+    _write_json(CONFIG_FILE, cfg)
+
+
+def _write_json(path: Path, data: dict) -> None:
+    """Replace complete files atomically; an interrupted save keeps the old copy."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def _current_month() -> str:
@@ -69,8 +88,7 @@ def _archive_stats(stats: dict) -> None:
         "total_recording_seconds": stats.get("total_recording_seconds", 0.0),
         "total_recordings": stats.get("total_recordings", 0),
     }
-    with open(STATS_HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
+    _write_json(STATS_HISTORY_FILE, history)
 
 
 def load_stats() -> dict:
@@ -106,9 +124,7 @@ def load_stats() -> dict:
 
 def save_stats(stats: dict) -> None:
     """Persist recording stats to disk."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(STATS_FILE, "w") as f:
-        json.dump(stats, f, indent=2)
+    _write_json(STATS_FILE, stats)
 
 
 def get_hotkey_preset(name: str) -> dict:

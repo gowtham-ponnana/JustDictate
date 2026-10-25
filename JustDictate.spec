@@ -16,6 +16,7 @@ for sp in site.getsitepackages():
 
 datas = [
     (os.path.join(site_packages, '_sounddevice_data'), '_sounddevice_data'),
+    ('licenses/parakeet-mlx.txt', 'licenses'),
 ]
 binaries = [
     (os.path.join(site_packages, '_sounddevice_data/portaudio-binaries/libportaudio.dylib'), '_sounddevice_data/portaudio-binaries'),
@@ -43,6 +44,7 @@ hiddenimports = [
     'Quartz',
     'CoreText',
     'HIServices',
+    'ApplicationServices',
     'objc',
     'PyObjCTools',
     'PyObjCTools.AppHelper',

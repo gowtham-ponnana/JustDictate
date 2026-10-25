@@ -13,6 +13,10 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 ├── model_manager.py ← Loads Parakeet via parakeet-mlx (Metal GPU), handles transcription.
 ├── dictation_engine.py ← pynput hotkey listener + sounddevice recording + clipboard paste + Escape-to-cancel + Escape-to-undo + input device selection.
 ├── floating_window.py  ← PyObjC NSWindow overlay with waveform animation.
+├── personalization.py ← Local reviewed-transcript history and monthly contextual correction training.
+├── learning_service.py ← Bounded background capture and training queue.
+├── correction_monitor.py ← Exact-span edit observation, debounce, and inferred-label revocation.
+├── accessibility_reader.py ← Bounded macOS Accessibility snapshots of compatible editable fields.
 └── config_manager.py   ← JSON config + stats at ~/.config/just-dictate/
 ```
 
@@ -23,6 +27,7 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 - Typically 2–3× faster than the previous ONNX INT8 CPU path on M-series, especially for long dictation
 - `parakeet-mlx` is Apple Silicon only — that is intentional for this app right now
 - Weights are BF16 in memory; Hugging Face cache is `~/.cache/just-dictate/parakeet-mlx/` (~2.5 GB download)
+- A guarded greedy decoder adapter accelerates `parakeet-mlx==0.5.2` without changing weights or token decisions. Unsupported versions or missing package metadata use upstream decoding. Internal fast-path alignment confidence is not measured confidence and must not be used for accuracy gates.
 - Audio longer than 90s is chunked (60s windows, 5s overlap) in-process. Do not call `model.transcribe(path)` — that path needs ffmpeg. Feed numpy PCM through `get_logmel` + `generate`.
 
 ### Why rumps + PyObjC (not tkinter/Qt)?
@@ -60,7 +65,7 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 
 6. **PyObjCTools is a namespace package** (no `__init__.py`). py2app's `imp.find_module` can't find it. If packaging with py2app, put it in `includes`, not `packages`.
 
-7. **Escape cancel uses a `_cancelled` flag**, not just `_cancel_recording()`. The flag is needed because `_on_release` fires after `_cancel_recording` when the user releases the hotkey — without the flag, it would still try to transcribe. `_cancel_recording()` sets `_cancelled = True` and `_on_release()` checks/resets it.
+7. **Recording ownership is guarded by `_state_lock`.** Release claims processing and detaches the finished chunks before starting a worker. Cancellation clears recording state, so the subsequent release must not enqueue transcription. Busy hotkey holds require release and a fresh press; repeats must not start a partial capture. Keep the cancel/release and busy-hold regression tests passing.
 
 8. **Escape has three behaviors** depending on state: (1) during recording → cancel, (2) within 5s after paste → undo via Cmd+Z, (3) otherwise → pass through. All routed through `_handle_escape()`. The undo sends CGEvent Cmd+Z (keycode 6), which works in GUI apps but not terminals (where Cmd+Z sends SIGTSTP).
 
@@ -69,6 +74,10 @@ These are bugs that took hours to solve. **Do not change** these patterns withou
 10. **`sd.query_devices()` returns a cached device list**. When Bluetooth devices (AirPods) connect after app launch, they won't appear. Must call `sd._terminate()` + `sd._initialize()` to force PortAudio to re-query Core Audio before listing devices.
 
 11. **Device warm-up eliminates recording delay for external mics**. External devices (iPhone Continuity, AirPods, USB mics) take 1-2s to initialize on first `sd.InputStream()` open. A brief open→close cycle in `_warm_up_device()` pre-initializes the OS driver so subsequent opens are near-instant. The mic is NOT left open — only opened during actual recording.
+
+12. **Clipboard restoration is deferred, ownership-checked, and preserves all item types.** Keep the 50ms pre-paste wait; the 150ms restoration timer must not overwrite a newer user copy. Modal review/settings actions must successfully suspend an idle engine before taking focus or restarting PortAudio.
+
+13. **Personalization never assumes unedited model output is correct.** Local capture and edit learning are enabled by default; preserve existing off preferences. Monthly training uses inferred small corrections from the exact pasted span or explicit reviews, with grouped held-out validation and rollback. Manual labels override automatic ones. Wait until all edit-observation windows close before training. Parakeet stays frozen; WAVs are review material. After accepted training, purge used transcripts/audio and compact SQLite; retain learned rules and aggregate metrics. Reset/disable must invalidate pending captures and stale results. Synchronous versioned retractions prevent queued old corrections from reviving an invalid label. Never log dictated text or save surrounding document content.
 
 ## Running Locally
 
