@@ -20,6 +20,21 @@ LONG_AUDIO_S = 90.0
 CHUNK_DURATION_S = 60.0
 OVERLAP_DURATION_S = 5.0
 TARGET_SAMPLE_RATE = 16000
+QUIET_TARGET_PEAK = 0.1  # -20 dBFS
+MAX_INPUT_GAIN = 8.0
+GPU_CACHE_BYTES = 256 * 1024**2
+
+
+def _model_source() -> str:
+    """Reuse a complete cached revision. A first or incomplete install uses the Hub."""
+    from huggingface_hub import try_to_load_from_cache
+
+    config = try_to_load_from_cache(MODEL_ID, "config.json", cache_dir=MLX_CACHE_DIR)
+    if isinstance(config, str):
+        snapshot = Path(config).parent
+        if (snapshot / "model.safetensors").is_file():
+            return str(snapshot)
+    return MODEL_ID
 
 
 class ModelManager:
@@ -50,6 +65,12 @@ class ModelManager:
             import mlx.core as mx
             from parakeet_mlx import from_pretrained
 
+            # MLX can otherwise keep gigabytes of unused buffers after a long
+            # hold. This caps free buffers only; active model tensors are exempt.
+            previous_limit = mx.set_cache_limit(GPU_CACHE_BYTES)
+            if previous_limit < GPU_CACHE_BYTES:
+                mx.set_cache_limit(previous_limit)
+
             logging.getLogger("httpx").setLevel(logging.WARNING)
             logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
@@ -62,7 +83,7 @@ class ModelManager:
             )
             self._dtype = mx.bfloat16
             self._model = from_pretrained(
-                MODEL_ID,
+                _model_source(),
                 dtype=self._dtype,
                 cache_dir=str(MLX_CACHE_DIR),
             )
@@ -79,6 +100,10 @@ class ModelManager:
             warmup = np.zeros(int(0.4 * TARGET_SAMPLE_RATE), dtype=np.float32)
             self._transcribe_unlocked(warmup, TARGET_SAMPLE_RATE)
             log.info("MLX warmup done.")
+        except Exception:
+            self._model = None
+            self._fast_decode = False
+            raise
         finally:
             self._loading = False
 
@@ -104,6 +129,16 @@ class ModelManager:
             audio = _resample_linear(audio, sample_rate, TARGET_SAMPLE_RATE)
             sample_rate = TARGET_SAMPLE_RATE
 
+        peak = max(abs(float(audio.min())), abs(float(audio.max())))
+        if not np.isfinite(peak):
+            raise ValueError("Audio exceeds the float32 sample range.")
+        if peak == 0:
+            return ""
+        # Quiet input can fall into the log-mel noise floor. A single bounded
+        # gain keeps timing and dynamics intact and never edits retained PCM.
+        if self._fast_decode and peak < QUIET_TARGET_PEAK:
+            audio = audio * min(QUIET_TARGET_PEAK / peak, MAX_INPUT_GAIN)
+
         duration = len(audio) / sample_rate
         t0 = time.perf_counter()
         with self._infer_lock:
@@ -120,7 +155,6 @@ class ModelManager:
 
     def _transcribe_unlocked(self, audio: np.ndarray, sample_rate: int) -> str:
         import mlx.core as mx
-        from parakeet_mlx.audio import get_logmel
 
         hop = self._model.preprocessor_config.hop_length
         if len(audio) < hop:
@@ -131,8 +165,7 @@ class ModelManager:
         audio_mx = mx.array(audio, dtype=mx.float32)
         duration = len(audio) / sample_rate
         if duration <= LONG_AUDIO_S:
-            mel = get_logmel(audio_mx, self._model.preprocessor_config)
-            result = self._generate(mel)
+            result = self._generate(self._features(audio_mx))
             return (result.text or "").strip()
         return self._transcribe_chunked(audio_mx, sample_rate)
 
@@ -143,7 +176,6 @@ class ModelManager:
             sentences_to_result,
             tokens_to_sentences,
         )
-        from parakeet_mlx.audio import get_logmel
 
         cfg = self._model.preprocessor_config
         chunk_samples = int(CHUNK_DURATION_S * sample_rate)
@@ -157,7 +189,7 @@ class ModelManager:
             if end - start < cfg.hop_length:
                 break
             chunk = audio_mx[start:end]
-            result = self._generate(get_logmel(chunk, cfg))
+            result = self._generate(self._features(chunk))
             offset = start / sample_rate
             for sentence in result.sentences:
                 for token in sentence.tokens:
@@ -187,6 +219,14 @@ class ModelManager:
         if not all_tokens:
             return ""
         return sentences_to_result(tokens_to_sentences(all_tokens)).text.strip()
+
+    def _features(self, pcm):
+        from parakeet_mlx.audio import get_logmel
+
+        # Preserve float32 through the Fourier transform and normalization.
+        # Otherwise float32 features promote BF16 encoder layers on every pass.
+        mel = get_logmel(pcm, self._model.preprocessor_config)
+        return mel.astype(self._dtype) if self._fast_decode else mel
 
     def _generate(self, mel):
         if not self._fast_decode:

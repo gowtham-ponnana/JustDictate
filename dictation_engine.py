@@ -347,13 +347,18 @@ class DictationEngine:
         self._audio_chunks = chunks
         self._last_paste_time = None
 
+        meter_frames = 0
+
         def audio_callback(indata, frames, time_info, status):
+            nonlocal meter_frames
             if status:
                 log.warning("Audio status: %s", status)
             chunk = indata[:, 0].copy()
             chunks.append(chunk)
-            if self.on_audio_level:
-                rms = float(np.sqrt(np.mean(chunk**2)))
+            meter_frames += frames
+            if self.on_audio_level and meter_frames >= SAMPLE_RATE // 10:
+                meter_frames %= SAMPLE_RATE // 10
+                rms = float(np.sqrt(np.dot(chunk, chunk) / len(chunk)))
                 self._notify(self.on_audio_level, rms)
 
         try:
@@ -361,7 +366,7 @@ class DictationEngine:
                 samplerate=SAMPLE_RATE,
                 channels=1,
                 dtype="float32",
-                blocksize=1600,  # 100ms chunks
+                blocksize=0,  # Let Core Audio deliver its native buffer sizes.
                 callback=audio_callback,
                 device=self._input_device,
             )
@@ -517,16 +522,9 @@ class DictationEngine:
             pending = (snapshot, count)
             self._pending_restore = pending
         try:
-            if self.before_paste is None:
-                time.sleep(0.05)
-            else:
-                # Optional AX context capture shares the existing clipboard
-                # settle interval rather than adding another wait to each paste.
-                settle_started = time.monotonic()
-                self._notify(self.before_paste, text)
-                remaining = 0.05 - (time.monotonic() - settle_started)
-                if remaining > 0:
-                    time.sleep(remaining)
+            # NSPasteboard has accepted the complete string before _clipboard_set
+            # returns. Capture the insertion point, then post the paste immediately.
+            self._notify(self.before_paste, text)
             # Cmd+V paste via CGEvent (no osascript needed)
             # keycode 9 = 'v'
             src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)

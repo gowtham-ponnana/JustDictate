@@ -79,8 +79,25 @@ startup, recording, and delivery into another app are outside this measurement.
 
 The decoder reuses unchanged predictor work, reduces GPU decision reads, and
 skips redundant overlap processing in long recordings. Model warmup happens at
-startup. Clipboard restoration runs after completion feedback. Edit capture and
-its bounded retry share the existing wait before paste.
+startup. Clipboard restoration runs after completion feedback. The local build captures the insertion context and posts the paste
+as soon as the system pasteboard accepts the string.
+
+### Local Apple Silicon build
+
+The local build computes audio features in float32 and feeds the verified Parakeet
+encoder in BF16. Recordings whose peak is below −20 dBFS receive up to 8× gain
+for recognition. This preserves the original audio for playback. Exact digital
+silence skips inference. The MLX allocator retains up to roughly 256 MiB of free
+buffers between dictations in addition to memory in active use.
+
+For a speaker-balanced comparison with upstream, unpack the LibriSpeech
+`test-clean` and `test-other` sets and run the following from the checkout.
+The report includes word error rate and transcription latency at original level
+and after a 30 dB attenuation.
+
+```bash
+.venv/bin/python tools/benchmark_speech.py /path/to/LibriSpeech --baseline-ref 3e6dce4
+```
 
 ### Compared with Wispr Flow and superwhisper
 
@@ -152,9 +169,9 @@ preferences are respected. History lives in
   recordings, transcripts, learned corrections, and rollback state. Local files
   have restricted user permissions and are not separately encrypted by the app.
 
-Setup downloads dependencies and model files. Cached transcription works offline;
-model loading may contact Hugging Face for files or metadata. Dictation audio and
-transcripts are not uploaded.
+Setup downloads dependencies and model files. When both files are present in the
+current cached snapshot, the app loads them directly from disk. Dictation audio
+and transcripts stay on the Mac.
 
 ## License
 
