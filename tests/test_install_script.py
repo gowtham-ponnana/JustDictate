@@ -19,13 +19,16 @@ class InstallTransactionTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.directory = Path(self.temporary.name)
         self.target = self.directory / "JustDictate.app"
-        self.backup = self.directory / ".JustDictate.previous.app"
+        self.backup = self.directory / ".JustDictate.previous.zip"
         self.stage = self.directory / "stage"
         self.stage.mkdir()
-        for app, value in ((self.target, "current"), (self.backup, "previous"),
+        for app, value in ((self.target, "current"),
                            (self.stage / "JustDictate.app", "new")):
             app.mkdir()
             (app / "identity").write_text(value)
+
+        self.backup.write_text("previous")
+        (self.stage / "rollback.zip").write_text("current")
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -33,15 +36,14 @@ class InstallTransactionTests(unittest.TestCase):
     def transaction(self, mode):
         source = INSTALLER.read_text()
         cleanup = source[source.index("cleanup() {"):source.index("trap cleanup EXIT")]
-        start = source.index('if [ -e "$target_app" ]; then\n    if [ -e "$backup_app" ]; then')
+        start = source.index('if [ -e "$target_app" ]; then\n    target_moved=1')
         end = source.index("committed=1", start) + len("committed=1")
         transaction = source[start:end]
         script = """set -euo pipefail
 target_app="$TEST_TARGET"
-backup_app="$TEST_BACKUP"
+backup_zip="$TEST_BACKUP"
 stage_dir="$TEST_STAGE"
 target_moved=0
-backup_moved=0
 new_installed=0
 committed=0
 """ + cleanup + """
@@ -49,6 +51,9 @@ trap cleanup EXIT
 verify_bundle() { [ "$TEST_MODE" != "verify-failure" ]; }
 mv() {
     if [ "$TEST_MODE" = "rename-failure" ] && [ "$1" = "$stage_dir/JustDictate.app" ]; then
+        return 1
+    fi
+    if [ "$TEST_MODE" = "archive-failure" ] && [ "$1" = "-f" ]; then
         return 1
     fi
     command mv "$@"
@@ -62,19 +67,25 @@ mv() {
         result = self.transaction("success")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.target / "identity").read_text(), "new")
-        self.assertEqual((self.backup / "identity").read_text(), "current")
+        self.assertEqual(self.backup.read_text(), "current")
 
     def test_failed_final_verification_restores_current_app_and_older_backup(self):
         result = self.transaction("verify-failure")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.target / "identity").read_text(), "current")
-        self.assertEqual((self.backup / "identity").read_text(), "previous")
+        self.assertEqual(self.backup.read_text(), "previous")
+
+    def test_failed_archive_rotation_restores_current_app_and_keeps_prior_archive(self):
+        result = self.transaction("archive-failure")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.target / "identity").read_text(), "current")
+        self.assertEqual(self.backup.read_text(), "previous")
 
     def test_failed_replacement_rename_restores_both_prior_bundles(self):
         result = self.transaction("rename-failure")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.target / "identity").read_text(), "current")
-        self.assertEqual((self.backup / "identity").read_text(), "previous")
+        self.assertEqual(self.backup.read_text(), "previous")
 
 
 if __name__ == "__main__":

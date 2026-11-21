@@ -23,8 +23,8 @@ open /Applications/JustDictate.app
 
 The installer prepares dependencies, builds the app, and installs it in
 `/Applications`. The first launch downloads the model, approximately **2.5 GB**.
-An existing app is replaced only after the new build is verified; the previous
-version is kept at `/Applications/.JustDictate.previous.app`.
+The installer verifies the new build before replacing an existing app. It saves
+the previous app in `/Applications/.JustDictate.previous.zip` for rollback.
 
 In **System Settings → Privacy & Security**, enable JustDictate under
 **Microphone**, **Accessibility**, and **Input Monitoring**. Wait for the menu
