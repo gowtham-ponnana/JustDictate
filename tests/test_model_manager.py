@@ -114,8 +114,35 @@ class ChunkingTests(unittest.TestCase):
 
             manager._generate = Mock(return_value=SimpleNamespace(sentences=[], tokens=[]))
             with self.subTest(seconds=seconds), patch("parakeet_mlx.audio.get_logmel", get_logmel):
-                self.assertEqual(manager._transcribe_chunked(np.arange(seconds), 1), "")
+                self.assertEqual(manager._transcribe_chunked(np.arange(seconds), 1).text, "")
                 self.assertEqual(calls, expected)
+
+
+class GapRecoveryTests(unittest.TestCase):
+    def test_retry_missing_leading_middle_and_trailing_speech_without_repeating_anchors(self):
+        from parakeet_mlx.alignment import AlignedToken, sentences_to_result, tokens_to_sentences
+        manager = ModelManager()
+        rate = 16000
+        audio = np.tile(np.repeat(np.array([0.0, 0.015], dtype=np.float32), rate // 4), 36)
+        anchors = [AlignedToken(1, " first", 5.0, 0.25), AlignedToken(2, " second", 11.0, 0.25)]
+        initial = sentences_to_result(tokens_to_sentences(anchors))
+        manager._features = lambda x: x
+        manager._generate = Mock(side_effect=[
+            SimpleNamespace(tokens=[SimpleNamespace(text=text)]) for text in (" start", " middle", " end")
+        ])
+        self.assertEqual(manager._recover_alignment_gaps(initial, audio, audio, rate),
+                         "start first middle second end")
+        self.assertEqual([len(c.args[0]) for c in manager._generate.call_args_list],
+                         [5 * rate, int(5.75 * rate), int(6.75 * rate)])
+
+    def test_digital_silence_and_steady_background_do_not_trigger_recognition(self):
+        manager = ModelManager()
+        manager._generate = Mock()
+        for value in (0.0, 0.012):
+            audio = np.full(70 * 16000, value, dtype=np.float32)
+            initial = SimpleNamespace(tokens=[], text="")
+            self.assertEqual(manager._recover_alignment_gaps(initial, audio, audio, 16000), "")
+        manager._generate.assert_not_called()
 
 
 class FastGreedyTests(unittest.TestCase):

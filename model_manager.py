@@ -23,6 +23,9 @@ TARGET_SAMPLE_RATE = 16000
 QUIET_TARGET_PEAK = 0.1  # -20 dBFS
 MAX_INPUT_GAIN = 8.0
 GPU_CACHE_BYTES = 256 * 1024**2
+# Parakeet can skip a stretch of speech and then resume with valid timestamps.
+MIN_ALIGNMENT_GAP_S = 4.0
+MAX_RECOVERY_WINDOW_S = 24.0
 
 
 def _model_source() -> str:
@@ -166,10 +169,40 @@ class ModelManager:
         duration = len(audio) / sample_rate
         if duration <= LONG_AUDIO_S:
             result = self._generate(self._features(audio_mx))
+        else:
+            result = self._transcribe_chunked(audio_mx, sample_rate)
+        if duration < MIN_ALIGNMENT_GAP_S:
             return (result.text or "").strip()
-        return self._transcribe_chunked(audio_mx, sample_rate)
+        return self._recover_alignment_gaps(result, audio, audio_mx, sample_rate)
 
-    def _transcribe_chunked(self, audio_mx, sample_rate: int) -> str:
+    def _recover_alignment_gaps(self, result, audio, audio_mx, sample_rate: int) -> str:
+        """Retry only uncovered intervals that contain sustained, changing audio."""
+        tokens = result.tokens
+        previous_end = 0.0
+        insertions = {}
+        for index in range(len(tokens) + 1):
+            token = tokens[index] if index < len(tokens) else None
+            next_start = token.start if token is not None else len(audio) / sample_rate
+            if next_start - previous_end >= MIN_ALIGNMENT_GAP_S:
+                start = max(0, round(previous_end * sample_rate))
+                end = min(len(audio), round(next_start * sample_rate))
+                recovered = []
+                for lo, hi in _recovery_windows(audio, start, end, sample_rate):
+                    candidate = self._generate(self._features(audio_mx[lo:hi]))
+                    recovered.extend(t.text for t in candidate.tokens)
+                if recovered:
+                    insertions[index] = "".join(recovered)
+            if token is not None:
+                previous_end = max(previous_end, token.end)
+        if not insertions:
+            return (result.text or "").strip()
+        parts = []
+        for index, token in enumerate(tokens):
+            parts.extend((insertions.get(index, ""), token.text))
+        parts.append(insertions.get(len(tokens), ""))
+        return "".join(parts).strip()
+
+    def _transcribe_chunked(self, audio_mx, sample_rate: int):
         from parakeet_mlx.alignment import (
             merge_longest_common_subsequence,
             merge_longest_contiguous,
@@ -216,9 +249,7 @@ class ModelManager:
             if end == n:
                 break
 
-        if not all_tokens:
-            return ""
-        return sentences_to_result(tokens_to_sentences(all_tokens)).text.strip()
+        return sentences_to_result(tokens_to_sentences(all_tokens))
 
     def _features(self, pcm):
         from parakeet_mlx.audio import get_logmel
@@ -232,6 +263,29 @@ class ModelManager:
         if not self._fast_decode:
             return self._model.generate(mel)[0]
         return _generate_greedy_text(self._model, mel)
+
+
+def _recovery_windows(audio, start, end, sample_rate):
+    # Check 20 ms frames against both the local floor and a quiet absolute
+    # floor. Steady room noise and ordinary pauses need no second GPU pass.
+    frame = max(1, sample_rate // 50)
+    limit = int(MAX_RECOVERY_WINDOW_S * sample_rate)
+    while start < end:
+        stop = min(start + limit, end)
+        frames = (stop - start) // frame
+        if frames < 12:
+            break
+        data = audio[start:start + frames * frame].reshape(frames, frame)
+        rms = np.sqrt(np.einsum("ij,ij->i", data, data) / frame)
+        if stop < end:
+            # Place long-gap seams at a low-energy frame in the last second.
+            seam = frames - 50 + int(np.argmin(rms[-50:]))
+            stop = start + seam * frame
+            rms = rms[:seam]
+        threshold = max(0.00065, 2.5 * float(np.percentile(rms, 10)))
+        if np.count_nonzero(rms > threshold) >= 12:
+            yield start, stop
+        start = stop
 
 
 def _supports_fast_decode(model) -> bool:
