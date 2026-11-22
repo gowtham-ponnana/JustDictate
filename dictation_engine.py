@@ -522,9 +522,16 @@ class DictationEngine:
             pending = (snapshot, count)
             self._pending_restore = pending
         try:
-            # NSPasteboard has accepted the complete string before _clipboard_set
-            # returns. Capture the insertion point, then post the paste immediately.
-            self._notify(self.before_paste, text)
+            if self.before_paste is None:
+                time.sleep(0.05)
+            else:
+                # Optional AX context capture shares the existing clipboard
+                # settle interval rather than adding another wait to each paste.
+                settle_started = time.monotonic()
+                self._notify(self.before_paste, text)
+                remaining = 0.05 - (time.monotonic() - settle_started)
+                if remaining > 0:
+                    time.sleep(remaining)
             # Cmd+V paste via CGEvent (no osascript needed)
             # keycode 9 = 'v'
             src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)

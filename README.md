@@ -79,16 +79,20 @@ startup, recording, and delivery into another app are outside this measurement.
 
 The decoder reuses unchanged predictor work, reduces GPU decision reads, and
 skips redundant overlap processing in long recordings. Model warmup happens at
-startup. Clipboard restoration runs after completion feedback. The local build captures the insertion context and posts the paste
-as soon as the system pasteboard accepts the string.
+startup. Clipboard restoration runs after completion feedback. Edit capture and
+its bounded retry share the existing wait before paste.
 
-### Local Apple Silicon build
+### Feature precision and skipped speech
 
-The local build computes audio features in float32 and feeds the verified Parakeet
-encoder in BF16. Recordings whose peak is below −20 dBFS receive up to 8× gain
-for recognition. This preserves the original audio for playback. Exact digital
-silence skips inference. The MLX allocator retains up to roughly 256 MiB of free
-buffers between dictations in addition to memory in active use.
+Audio features are computed in float32 and passed to the Parakeet encoder in
+BF16. Exact digital silence skips inference. The MLX allocator retains up to
+roughly 256 MiB of free buffers between dictations in addition to memory in
+active use.
+
+Parakeet can silently skip a stretch of speech in a long recording and resume
+later. When consecutive token timestamps are at least four seconds apart and the
+audio in between shows sustained activity, that span is decoded again in
+bounded windows and the recovered words are inserted in place.
 
 For a speaker-balanced comparison with upstream, unpack the LibriSpeech
 `test-clean` and `test-other` sets and run the following from the checkout.

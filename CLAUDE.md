@@ -26,9 +26,12 @@ just_dictate.py      ← Entry point. rumps menu bar app. Ties everything togeth
 - Same NVIDIA Parakeet TDT 0.6B v3 model, running on the Apple Silicon GPU via MLX
 - Typically 2–3× faster than the previous ONNX INT8 CPU path on M-series, especially for long dictation
 - `parakeet-mlx` is Apple Silicon only — that is intentional for this app right now
-- Weights are BF16 in memory; Hugging Face cache is `~/.cache/just-dictate/parakeet-mlx/` (~2.5 GB download)
+- Weights are BF16 in memory; Hugging Face cache is `~/.cache/just-dictate/parakeet-mlx/` (~2.5 GB download). When the cached snapshot has both `config.json` and `model.safetensors`, it is loaded straight from disk with no Hub request.
 - A guarded greedy decoder adapter accelerates `parakeet-mlx==0.5.2` without changing weights or token decisions. Unsupported versions or missing package metadata use upstream decoding. Internal fast-path alignment confidence is not measured confidence and must not be used for accuracy gates.
 - Audio longer than 90s is chunked (60s windows, 5s overlap) in-process. Do not call `model.transcribe(path)` — that path needs ffmpeg. Feed numpy PCM through `get_logmel` + `generate`.
+- On the fast path, log-mel features are computed in float32 and cast to BF16 so the encoder runs in BF16 (about 30% faster, same accuracy on LibriSpeech). This can change rare token decisions compared with float32 features; `tools/benchmark_model.py --allow-text-changes` accepts that.
+- Parakeet can silently drop whole sentences after pauses in long recordings. `_recover_alignment_gaps` re-decodes token gaps of 4s or more that contain sustained audio activity (windows up to 24s) and inserts the recovered text in place. Do not remove it without a long-recording word-error check.
+- Do not amplify quiet input. `get_logmel` floors power at `log(x + 1e-5)`, so gain makes quiet background speech (a TV, nearby talk) transcribable. A bounded 8× gain raised quiet-mic word errors with a TV in the background from 12.6% to 57.8%.
 
 ### Why rumps + PyObjC (not tkinter/Qt)?
 - Homebrew Python 3.13+ does not ship tkinter

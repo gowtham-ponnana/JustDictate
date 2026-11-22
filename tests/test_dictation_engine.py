@@ -484,26 +484,46 @@ class ClipboardTests(unittest.TestCase):
         quartz.start()
         self.addCleanup(quartz.stop)
 
-    def test_paste_schedules_restoration_without_sleeping(self):
+    def test_paste_defers_only_restore_wait_and_preserves_types(self):
         original = self.clipboard
         self.engine._auto_type("hello")
-        self.sleep.assert_not_called()
+        self.sleep.assert_called_once_with(0.05)
         self.assertEqual(self.restore_calls, [])
         self.assertEqual(self.engine._restore_timer.interval, 0.15)
         self.engine._restore_timer.fire()
         self.assertEqual(self.clipboard, original)
 
-    def test_capture_finishes_before_paste_events(self):
-        events = []
-        self.engine.before_paste = lambda text: events.append(("capture", text))
-        self.quartz.CGEventPost.side_effect = lambda *args: events.append(("paste", None))
-        self.engine._auto_type("hello")
-        self.sleep.assert_not_called()
-        self.assertEqual(events, [("capture", "hello"), ("paste", None), ("paste", None)])
+    def test_before_paste_capture_shares_the_existing_settle_window(self):
+        for capture_seconds in (0.020, 0.037, 0.045):
+            with self.subTest(capture_seconds=capture_seconds):
+                events = []
+                self.sleep.reset_mock()
+                self.quartz.CGEventPost.reset_mock()
+                self.engine.before_paste = lambda text: events.append(("capture", text))
+                self.sleep.side_effect = lambda duration: events.append(("settle", duration))
+                self.quartz.CGEventPost.side_effect = lambda *args: events.append(("paste", None))
+                with patch.object(module.time, "monotonic",
+                                  side_effect=[10.0, 10.0 + capture_seconds]):
+                    self.engine._auto_type("hello")
+                self.assertEqual(self.sleep.call_count, 1)
+                remaining = self.sleep.call_args.args[0]
+                self.assertAlmostEqual(remaining, 0.05 - capture_seconds)
+                self.assertAlmostEqual(capture_seconds + remaining, 0.05)
+                self.assertEqual(events[0], ("capture", "hello"))
+                self.assertEqual([event[0] for event in events],
+                                 ["capture", "settle", "paste", "paste"])
 
     def test_before_paste_failure_cannot_prevent_paste(self):
         self.engine.before_paste = Mock(side_effect=ValueError("capture unavailable"))
-        self.engine._auto_type("hello")
+        with patch.object(module.time, "monotonic", side_effect=[10.0, 10.01]):
+            self.engine._auto_type("hello")
+        self.assertAlmostEqual(self.sleep.call_args.args[0], 0.04)
+        self.assertEqual(self.quartz.CGEventPost.call_count, 2)
+
+    def test_slow_capture_does_not_add_another_settle_sleep(self):
+        self.engine.before_paste = Mock()
+        with patch.object(module.time, "monotonic", side_effect=[10.0, 10.08]):
+            self.engine._auto_type("hello")
         self.sleep.assert_not_called()
         self.assertEqual(self.quartz.CGEventPost.call_count, 2)
 

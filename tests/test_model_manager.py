@@ -38,16 +38,17 @@ class ModelInputTests(unittest.TestCase):
         audio[50] = 1e-9
         self.assertEqual(self.manager.transcribe(audio), "hello")
 
-    def test_quiet_waveforms_have_bounded_gain_without_mutating_capture(self):
-        self.manager._fast_decode = True
-        for peak, expected in ((0.5, 0.5), (0.05, 0.1), (0.001, 0.008)):
-            with self.subTest(peak=peak):
-                audio = np.array([peak, -peak / 2], dtype=np.float32)
-                original = audio.copy()
-                self.manager.transcribe(audio)
-                actual, _ = self.manager._transcribe_unlocked.call_args.args
-                np.testing.assert_allclose(actual, [expected, -expected / 2])
-                np.testing.assert_array_equal(audio, original)
+    def test_quiet_waveforms_reach_the_model_unamplified(self):
+        # Gain lifted quiet background speech above the log-mel floor, so a
+        # TV or nearby conversation was transcribed for quiet microphones.
+        for fast_decode in (True, False):
+            self.manager._fast_decode = fast_decode
+            for peak in (0.5, 0.05, 0.001):
+                with self.subTest(fast_decode=fast_decode, peak=peak):
+                    audio = np.array([peak, -peak / 2], dtype=np.float32)
+                    self.manager.transcribe(audio)
+                    actual, _ = self.manager._transcribe_unlocked.call_args.args
+                    np.testing.assert_array_equal(actual, audio)
 
     def test_complete_cache_is_preferred_and_partial_cache_downloads(self):
         from model_manager import MODEL_ID, _model_source

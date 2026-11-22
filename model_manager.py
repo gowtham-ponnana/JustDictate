@@ -20,8 +20,6 @@ LONG_AUDIO_S = 90.0
 CHUNK_DURATION_S = 60.0
 OVERLAP_DURATION_S = 5.0
 TARGET_SAMPLE_RATE = 16000
-QUIET_TARGET_PEAK = 0.1  # -20 dBFS
-MAX_INPUT_GAIN = 8.0
 GPU_CACHE_BYTES = 256 * 1024**2
 # Parakeet can skip a stretch of speech and then resume with valid timestamps.
 MIN_ALIGNMENT_GAP_S = 4.0
@@ -137,10 +135,9 @@ class ModelManager:
             raise ValueError("Audio exceeds the float32 sample range.")
         if peak == 0:
             return ""
-        # Quiet input can fall into the log-mel noise floor. A single bounded
-        # gain keeps timing and dynamics intact and never edits retained PCM.
-        if self._fast_decode and peak < QUIET_TARGET_PEAK:
-            audio = audio * min(QUIET_TARGET_PEAK / peak, MAX_INPUT_GAIN)
+        # Do not amplify quiet input. parakeet-mlx floors log-mel power at
+        # 1e-5, so gain lifts quiet background speech (a TV, nearby talk) above
+        # that floor and gets it transcribed into the user's text.
 
         duration = len(audio) / sample_rate
         t0 = time.perf_counter()
