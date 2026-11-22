@@ -23,8 +23,8 @@ open /Applications/JustDictate.app
 
 The installer prepares dependencies, builds the app, and installs it in
 `/Applications`. The first launch downloads the model, approximately **2.5 GB**.
-An existing app is replaced only after the new build is verified; the previous
-version is kept at `/Applications/.JustDictate.previous.app`.
+The installer verifies the new build before replacing an existing app. It saves
+the previous app in `/Applications/.JustDictate.previous.zip` for rollback.
 
 In **System Settings → Privacy & Security**, enable JustDictate under
 **Microphone**, **Accessibility**, and **Input Monitoring**. Wait for the menu
@@ -81,6 +81,27 @@ The decoder reuses unchanged predictor work, reduces GPU decision reads, and
 skips redundant overlap processing in long recordings. Model warmup happens at
 startup. Clipboard restoration runs after completion feedback. Edit capture and
 its bounded retry share the existing wait before paste.
+
+### Feature precision and skipped speech
+
+Audio features are computed in float32 and passed to the Parakeet encoder in
+BF16. Exact digital silence skips inference. The MLX allocator retains up to
+roughly 256 MiB of free buffers between dictations in addition to memory in
+active use.
+
+Parakeet can silently skip a stretch of speech in a long recording and resume
+later. When consecutive token timestamps are at least four seconds apart and the
+audio in between shows sustained activity, that span is decoded again in
+bounded windows and the recovered words are inserted in place.
+
+For a speaker-balanced comparison with upstream, unpack the LibriSpeech
+`test-clean` and `test-other` sets and run the following from the checkout.
+The report includes word error rate and transcription latency at original level
+and after a 30 dB attenuation.
+
+```bash
+.venv/bin/python tools/benchmark_speech.py /path/to/LibriSpeech --baseline-ref 3e6dce4
+```
 
 ### Compared with Wispr Flow and superwhisper
 
@@ -152,9 +173,9 @@ preferences are respected. History lives in
   recordings, transcripts, learned corrections, and rollback state. Local files
   have restricted user permissions and are not separately encrypted by the app.
 
-Setup downloads dependencies and model files. Cached transcription works offline;
-model loading may contact Hugging Face for files or metadata. Dictation audio and
-transcripts are not uploaded.
+Setup downloads dependencies and model files. When both files are present in the
+current cached snapshot, the app loads them directly from disk. Dictation audio
+and transcripts stay on the Mac.
 
 ## License
 

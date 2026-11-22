@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -29,6 +31,40 @@ class ModelInputTests(unittest.TestCase):
         self.assertEqual(self.manager.transcribe(np.array([], dtype=np.float32)), "")
         self.manager._transcribe_unlocked.assert_not_called()
 
+    def test_digital_silence_skips_gpu_but_quiet_speech_reaches_it(self):
+        audio = np.zeros(16000, dtype=np.float32)
+        self.assertEqual(self.manager.transcribe(audio), "")
+        self.manager._transcribe_unlocked.assert_not_called()
+        audio[50] = 1e-9
+        self.assertEqual(self.manager.transcribe(audio), "hello")
+
+    def test_quiet_waveforms_reach_the_model_unamplified(self):
+        # Gain lifted quiet background speech above the log-mel floor, so a
+        # TV or nearby conversation was transcribed for quiet microphones.
+        for fast_decode in (True, False):
+            self.manager._fast_decode = fast_decode
+            for peak in (0.5, 0.05, 0.001):
+                with self.subTest(fast_decode=fast_decode, peak=peak):
+                    audio = np.array([peak, -peak / 2], dtype=np.float32)
+                    self.manager.transcribe(audio)
+                    actual, _ = self.manager._transcribe_unlocked.call_args.args
+                    np.testing.assert_array_equal(actual, audio)
+
+    def test_complete_cache_is_preferred_and_partial_cache_downloads(self):
+        from model_manager import MODEL_ID, _model_source
+
+        with tempfile.TemporaryDirectory() as tmp:
+            snapshot = Path(tmp)
+            config = snapshot / "config.json"
+            config.write_text("{}")
+            with patch("huggingface_hub.try_to_load_from_cache", return_value=str(config)):
+                self.assertEqual(_model_source(), MODEL_ID)
+                (snapshot / "model.safetensors").write_bytes(b"fixture")
+                self.assertEqual(_model_source(), str(snapshot))
+            for missing in (None, object()):
+                with patch("huggingface_hub.try_to_load_from_cache", return_value=missing):
+                    self.assertEqual(_model_source(), MODEL_ID)
+
     def test_stereo_float64_is_downmixed_before_transcription(self):
         audio = np.array([[0.1, 0.3], [0.5, -0.1]], dtype=np.float64)
         self.assertEqual(self.manager.transcribe(audio), "hello")
@@ -36,6 +72,19 @@ class ModelInputTests(unittest.TestCase):
         np.testing.assert_allclose(converted, [0.2, 0.2])
         self.assertEqual(converted.dtype, np.float32)
         self.assertEqual(rate, 16000)
+
+    def test_only_validated_encoder_uses_bfloat16_after_float32_fft(self):
+        import mlx.core as mx
+        audio = mx.ones(800, dtype=mx.float32)
+        mel = mx.ones((1, 6, 128), dtype=mx.float32)
+        self.manager._model = SimpleNamespace(preprocessor_config=object())
+        self.manager._dtype = mx.bfloat16
+        with patch("parakeet_mlx.audio.get_logmel", return_value=mel) as extract:
+            self.manager._fast_decode = True
+            self.assertEqual(self.manager._features(audio).dtype, mx.bfloat16)
+            extract.assert_called_once_with(audio, self.manager._model.preprocessor_config)
+            self.manager._fast_decode = False
+            self.assertIs(self.manager._features(audio), mel)
 
     def test_default_falls_back_until_model_support_is_verified(self):
         self.manager._model = Mock()
@@ -66,8 +115,35 @@ class ChunkingTests(unittest.TestCase):
 
             manager._generate = Mock(return_value=SimpleNamespace(sentences=[], tokens=[]))
             with self.subTest(seconds=seconds), patch("parakeet_mlx.audio.get_logmel", get_logmel):
-                self.assertEqual(manager._transcribe_chunked(np.arange(seconds), 1), "")
+                self.assertEqual(manager._transcribe_chunked(np.arange(seconds), 1).text, "")
                 self.assertEqual(calls, expected)
+
+
+class GapRecoveryTests(unittest.TestCase):
+    def test_retry_missing_leading_middle_and_trailing_speech_without_repeating_anchors(self):
+        from parakeet_mlx.alignment import AlignedToken, sentences_to_result, tokens_to_sentences
+        manager = ModelManager()
+        rate = 16000
+        audio = np.tile(np.repeat(np.array([0.0, 0.015], dtype=np.float32), rate // 4), 36)
+        anchors = [AlignedToken(1, " first", 5.0, 0.25), AlignedToken(2, " second", 11.0, 0.25)]
+        initial = sentences_to_result(tokens_to_sentences(anchors))
+        manager._features = lambda x: x
+        manager._generate = Mock(side_effect=[
+            SimpleNamespace(tokens=[SimpleNamespace(text=text)]) for text in (" start", " middle", " end")
+        ])
+        self.assertEqual(manager._recover_alignment_gaps(initial, audio, audio, rate),
+                         "start first middle second end")
+        self.assertEqual([len(c.args[0]) for c in manager._generate.call_args_list],
+                         [5 * rate, int(5.75 * rate), int(6.75 * rate)])
+
+    def test_digital_silence_and_steady_background_do_not_trigger_recognition(self):
+        manager = ModelManager()
+        manager._generate = Mock()
+        for value in (0.0, 0.012):
+            audio = np.full(70 * 16000, value, dtype=np.float32)
+            initial = SimpleNamespace(tokens=[], text="")
+            self.assertEqual(manager._recover_alignment_gaps(initial, audio, audio, 16000), "")
+        manager._generate.assert_not_called()
 
 
 class FastGreedyTests(unittest.TestCase):

@@ -103,6 +103,7 @@ class CorrectionMonitor:
         self._on_update = on_update
         self._clock = clock
         self._lock = threading.RLock()
+        self._activity = threading.Condition(self._lock)
         self._contexts = []
         self._prepared = None
         self._epoch = 0
@@ -123,7 +124,13 @@ class CorrectionMonitor:
             self._thread.start()
 
     def _run(self):
-        while not self._stop.wait(0.5):
+        while True:
+            with self._activity:
+                self._activity.wait_for(
+                    lambda: self._stop.is_set() or self._prepared is not None or self._contexts
+                )
+            if self._stop.wait(0.5):
+                return
             try:
                 self.poll()
             except Exception:
@@ -175,6 +182,7 @@ class CorrectionMonitor:
                 snapshot.element, prefix, suffix, text, prefix + text + suffix,
                 self._clock(), self._epoch,
             )
+            self._activity.notify()
         finally:
             self._lock.release()
 
@@ -319,6 +327,7 @@ class CorrectionMonitor:
             self._epoch += 1
             self._prepared = None
             self._contexts.clear()
+            self._activity.notify_all()
             thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1)

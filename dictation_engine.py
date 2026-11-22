@@ -347,13 +347,18 @@ class DictationEngine:
         self._audio_chunks = chunks
         self._last_paste_time = None
 
+        meter_frames = 0
+
         def audio_callback(indata, frames, time_info, status):
+            nonlocal meter_frames
             if status:
                 log.warning("Audio status: %s", status)
             chunk = indata[:, 0].copy()
             chunks.append(chunk)
-            if self.on_audio_level:
-                rms = float(np.sqrt(np.mean(chunk**2)))
+            meter_frames += frames
+            if self.on_audio_level and meter_frames >= SAMPLE_RATE // 10:
+                meter_frames %= SAMPLE_RATE // 10
+                rms = float(np.sqrt(np.dot(chunk, chunk) / len(chunk)))
                 self._notify(self.on_audio_level, rms)
 
         try:
@@ -361,7 +366,7 @@ class DictationEngine:
                 samplerate=SAMPLE_RATE,
                 channels=1,
                 dtype="float32",
-                blocksize=1600,  # 100ms chunks
+                blocksize=0,  # Let Core Audio deliver its native buffer sizes.
                 callback=audio_callback,
                 device=self._input_device,
             )

@@ -69,6 +69,22 @@ class CorrectionMonitorTests(unittest.TestCase):
         self.observe(edited, at + 60, field=field)
         return edited
 
+    def test_worker_sleeps_when_idle_and_wakes_for_a_paste(self):
+        polled = threading.Event()
+        original = self.monitor.poll
+
+        def observe():
+            original()
+            polled.set()
+
+        self.monitor.poll = observe
+        self.monitor.start()
+        self.assertFalse(polled.wait(0.65))
+        self.paste(verify=False)
+        self.assertTrue(polled.wait(2))
+        self.monitor.close()
+        self.assertFalse(self.monitor._thread.is_alive())
+
     def test_unchanged_output_is_never_confirmed(self):
         expected = self.paste()
         self.observe(expected, 30)

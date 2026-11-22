@@ -26,10 +26,10 @@ if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
 fi
 
 target_app="/Applications/JustDictate.app"
-backup_app="/Applications/.JustDictate.previous.app"
+backup_zip="/Applications/.JustDictate.previous.zip"
+legacy_backup="/Applications/.JustDictate.previous.app"
 stage_dir=""
 target_moved=0
-backup_moved=0
 new_installed=0
 committed=0
 
@@ -42,16 +42,9 @@ cleanup() {
         if [ "$new_installed" -eq 1 ] && [ -e "$target_app" ]; then
             mv "$target_app" "$stage_dir/failed-new.app" || recovery_failed=1
         fi
-        if [ "$target_moved" -eq 1 ] && [ -e "$backup_app" ]; then
+        if [ "$target_moved" -eq 1 ] && [ -e "$stage_dir/retired" ]; then
             if [ ! -e "$target_app" ]; then
-                mv "$backup_app" "$target_app" || recovery_failed=1
-            else
-                recovery_failed=1
-            fi
-        fi
-        if [ "$backup_moved" -eq 1 ] && [ -e "$stage_dir/older-backup.app" ]; then
-            if [ ! -e "$backup_app" ]; then
-                mv "$stage_dir/older-backup.app" "$backup_app" || recovery_failed=1
+                mv "$stage_dir/retired" "$target_app" || recovery_failed=1
             else
                 recovery_failed=1
             fi
@@ -59,7 +52,7 @@ cleanup() {
     fi
     if [ "$recovery_failed" -eq 1 ]; then
         echo "Automatic rollback could not finish. Recoverable bundles remain at:" >&2
-        echo "  $backup_app" >&2
+        echo "  $backup_zip" >&2
         echo "  $stage_dir" >&2
         status=1
     elif [[ "$stage_dir" == /Applications/.JustDictate-install.* ]]; then
@@ -139,8 +132,20 @@ verify_bundle "$stage_dir/JustDictate.app"
 if [ -e "$target_app" ] || [ -L "$target_app" ]; then
     check_identity "$target_app"
 fi
-if [ -e "$backup_app" ] || [ -L "$backup_app" ]; then
-    check_identity "$backup_app"
+if [ -e "$backup_zip" ] || [ -L "$backup_zip" ]; then
+    if [ -L "$backup_zip" ] || [ ! -f "$backup_zip" ] ||
+       [ "$(unzip -p "$backup_zip" JustDictate.app/Contents/Info.plist |
+            plutil -extract CFBundleIdentifier raw - 2>/dev/null)" != "com.gowtham.just-dictate" ]; then
+        echo "Unexpected rollback archive: $backup_zip" >&2
+        exit 1
+    fi
+fi
+if [ -e "$legacy_backup" ] || [ -L "$legacy_backup" ]; then
+    check_identity "$legacy_backup"
+fi
+if [ -d "$target_app" ]; then
+    /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$target_app" "$stage_dir/rollback.zip"
+    /usr/bin/unzip -tq "$stage_dir/rollback.zip" >/dev/null
 fi
 
 echo "The new app is staged. Requesting graceful shutdown of the installed app..."
@@ -167,21 +172,24 @@ if any(not app.isTerminated() for app in apps):
 PY
 
 if [ -e "$target_app" ]; then
-    if [ -e "$backup_app" ]; then
-        backup_moved=1
-        mv "$backup_app" "$stage_dir/older-backup.app"
-    fi
     target_moved=1
-    mv "$target_app" "$backup_app"
+    mv "$target_app" "$stage_dir/retired"
 fi
 new_installed=1
 mv "$stage_dir/JustDictate.app" "$target_app"
 verify_bundle "$target_app"
+if [ -f "$stage_dir/rollback.zip" ]; then
+    mv -f "$stage_dir/rollback.zip" "$backup_zip"
+fi
 committed=1
 
 echo "Installed and verified: $target_app"
-if [ -e "$backup_app" ]; then
-    echo "Previous version retained at: $backup_app"
+if [ -f "$backup_zip" ]; then
+    echo "Previous version archived at: $backup_zip"
+    if [ -d "$legacy_backup" ]; then
+        mv "$legacy_backup" "$stage_dir/older-rollback" ||
+            echo "Older rollback copy still present at $legacy_backup" >&2
+    fi
 fi
 echo "Open JustDictate from /Applications when ready."
 echo "If macOS requests access again, grant Microphone, Accessibility, and Input Monitoring"

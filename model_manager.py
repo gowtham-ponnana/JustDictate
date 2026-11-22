@@ -20,6 +20,22 @@ LONG_AUDIO_S = 90.0
 CHUNK_DURATION_S = 60.0
 OVERLAP_DURATION_S = 5.0
 TARGET_SAMPLE_RATE = 16000
+GPU_CACHE_BYTES = 256 * 1024**2
+# Parakeet can skip a stretch of speech and then resume with valid timestamps.
+MIN_ALIGNMENT_GAP_S = 4.0
+MAX_RECOVERY_WINDOW_S = 24.0
+
+
+def _model_source() -> str:
+    """Reuse a complete cached revision. A first or incomplete install uses the Hub."""
+    from huggingface_hub import try_to_load_from_cache
+
+    config = try_to_load_from_cache(MODEL_ID, "config.json", cache_dir=MLX_CACHE_DIR)
+    if isinstance(config, str):
+        snapshot = Path(config).parent
+        if (snapshot / "model.safetensors").is_file():
+            return str(snapshot)
+    return MODEL_ID
 
 
 class ModelManager:
@@ -50,6 +66,12 @@ class ModelManager:
             import mlx.core as mx
             from parakeet_mlx import from_pretrained
 
+            # MLX can otherwise keep gigabytes of unused buffers after a long
+            # hold. This caps free buffers only; active model tensors are exempt.
+            previous_limit = mx.set_cache_limit(GPU_CACHE_BYTES)
+            if previous_limit < GPU_CACHE_BYTES:
+                mx.set_cache_limit(previous_limit)
+
             logging.getLogger("httpx").setLevel(logging.WARNING)
             logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
@@ -62,7 +84,7 @@ class ModelManager:
             )
             self._dtype = mx.bfloat16
             self._model = from_pretrained(
-                MODEL_ID,
+                _model_source(),
                 dtype=self._dtype,
                 cache_dir=str(MLX_CACHE_DIR),
             )
@@ -79,6 +101,10 @@ class ModelManager:
             warmup = np.zeros(int(0.4 * TARGET_SAMPLE_RATE), dtype=np.float32)
             self._transcribe_unlocked(warmup, TARGET_SAMPLE_RATE)
             log.info("MLX warmup done.")
+        except Exception:
+            self._model = None
+            self._fast_decode = False
+            raise
         finally:
             self._loading = False
 
@@ -104,6 +130,15 @@ class ModelManager:
             audio = _resample_linear(audio, sample_rate, TARGET_SAMPLE_RATE)
             sample_rate = TARGET_SAMPLE_RATE
 
+        peak = max(abs(float(audio.min())), abs(float(audio.max())))
+        if not np.isfinite(peak):
+            raise ValueError("Audio exceeds the float32 sample range.")
+        if peak == 0:
+            return ""
+        # Do not amplify quiet input. parakeet-mlx floors log-mel power at
+        # 1e-5, so gain lifts quiet background speech (a TV, nearby talk) above
+        # that floor and gets it transcribed into the user's text.
+
         duration = len(audio) / sample_rate
         t0 = time.perf_counter()
         with self._infer_lock:
@@ -120,7 +155,6 @@ class ModelManager:
 
     def _transcribe_unlocked(self, audio: np.ndarray, sample_rate: int) -> str:
         import mlx.core as mx
-        from parakeet_mlx.audio import get_logmel
 
         hop = self._model.preprocessor_config.hop_length
         if len(audio) < hop:
@@ -131,19 +165,47 @@ class ModelManager:
         audio_mx = mx.array(audio, dtype=mx.float32)
         duration = len(audio) / sample_rate
         if duration <= LONG_AUDIO_S:
-            mel = get_logmel(audio_mx, self._model.preprocessor_config)
-            result = self._generate(mel)
+            result = self._generate(self._features(audio_mx))
+        else:
+            result = self._transcribe_chunked(audio_mx, sample_rate)
+        if duration < MIN_ALIGNMENT_GAP_S:
             return (result.text or "").strip()
-        return self._transcribe_chunked(audio_mx, sample_rate)
+        return self._recover_alignment_gaps(result, audio, audio_mx, sample_rate)
 
-    def _transcribe_chunked(self, audio_mx, sample_rate: int) -> str:
+    def _recover_alignment_gaps(self, result, audio, audio_mx, sample_rate: int) -> str:
+        """Retry only uncovered intervals that contain sustained, changing audio."""
+        tokens = result.tokens
+        previous_end = 0.0
+        insertions = {}
+        for index in range(len(tokens) + 1):
+            token = tokens[index] if index < len(tokens) else None
+            next_start = token.start if token is not None else len(audio) / sample_rate
+            if next_start - previous_end >= MIN_ALIGNMENT_GAP_S:
+                start = max(0, round(previous_end * sample_rate))
+                end = min(len(audio), round(next_start * sample_rate))
+                recovered = []
+                for lo, hi in _recovery_windows(audio, start, end, sample_rate):
+                    candidate = self._generate(self._features(audio_mx[lo:hi]))
+                    recovered.extend(t.text for t in candidate.tokens)
+                if recovered:
+                    insertions[index] = "".join(recovered)
+            if token is not None:
+                previous_end = max(previous_end, token.end)
+        if not insertions:
+            return (result.text or "").strip()
+        parts = []
+        for index, token in enumerate(tokens):
+            parts.extend((insertions.get(index, ""), token.text))
+        parts.append(insertions.get(len(tokens), ""))
+        return "".join(parts).strip()
+
+    def _transcribe_chunked(self, audio_mx, sample_rate: int):
         from parakeet_mlx.alignment import (
             merge_longest_common_subsequence,
             merge_longest_contiguous,
             sentences_to_result,
             tokens_to_sentences,
         )
-        from parakeet_mlx.audio import get_logmel
 
         cfg = self._model.preprocessor_config
         chunk_samples = int(CHUNK_DURATION_S * sample_rate)
@@ -157,7 +219,7 @@ class ModelManager:
             if end - start < cfg.hop_length:
                 break
             chunk = audio_mx[start:end]
-            result = self._generate(get_logmel(chunk, cfg))
+            result = self._generate(self._features(chunk))
             offset = start / sample_rate
             for sentence in result.sentences:
                 for token in sentence.tokens:
@@ -184,14 +246,43 @@ class ModelManager:
             if end == n:
                 break
 
-        if not all_tokens:
-            return ""
-        return sentences_to_result(tokens_to_sentences(all_tokens)).text.strip()
+        return sentences_to_result(tokens_to_sentences(all_tokens))
+
+    def _features(self, pcm):
+        from parakeet_mlx.audio import get_logmel
+
+        # Preserve float32 through the Fourier transform and normalization.
+        # Otherwise float32 features promote BF16 encoder layers on every pass.
+        mel = get_logmel(pcm, self._model.preprocessor_config)
+        return mel.astype(self._dtype) if self._fast_decode else mel
 
     def _generate(self, mel):
         if not self._fast_decode:
             return self._model.generate(mel)[0]
         return _generate_greedy_text(self._model, mel)
+
+
+def _recovery_windows(audio, start, end, sample_rate):
+    # Check 20 ms frames against both the local floor and a quiet absolute
+    # floor. Steady room noise and ordinary pauses need no second GPU pass.
+    frame = max(1, sample_rate // 50)
+    limit = int(MAX_RECOVERY_WINDOW_S * sample_rate)
+    while start < end:
+        stop = min(start + limit, end)
+        frames = (stop - start) // frame
+        if frames < 12:
+            break
+        data = audio[start:start + frames * frame].reshape(frames, frame)
+        rms = np.sqrt(np.einsum("ij,ij->i", data, data) / frame)
+        if stop < end:
+            # Place long-gap seams at a low-energy frame in the last second.
+            seam = frames - 50 + int(np.argmin(rms[-50:]))
+            stop = start + seam * frame
+            rms = rms[:seam]
+        threshold = max(0.00065, 2.5 * float(np.percentile(rms, 10)))
+        if np.count_nonzero(rms > threshold) >= 12:
+            yield start, stop
+        start = stop
 
 
 def _supports_fast_decode(model) -> bool:

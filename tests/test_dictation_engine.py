@@ -110,6 +110,20 @@ class EngineTests(unittest.TestCase):
         engine._on_press(self.key)
         self.assertTrue(engine._recording)
 
+    def test_variable_device_blocks_keep_all_samples_and_bound_ui_updates(self):
+        levels, input_audio = Mock(), []
+        engine = self.engine(on_audio_level=levels,
+                             transcribe_fn=lambda audio: input_audio.append(audio) or "")
+        engine._on_press(self.key)
+        self.assertEqual(module.sd.InputStream.call_args.kwargs["blocksize"], 0)
+        for frames in (160, 480, 160, 800) * 4:
+            engine._stream.callback(np.full((frames, 1), 0.25, dtype=np.float32), frames, None, None)
+        engine._on_release(self.key)
+        self.join(engine)
+        np.testing.assert_array_equal(input_audio[0], np.full(6400, 0.25, dtype=np.float32))
+        self.assertEqual(levels.call_count, 4)
+        self.assertAlmostEqual(levels.call_args.args[0], 0.25)
+
     def test_stop_during_inference_prevents_paste_and_learning(self):
         entered, resume = threading.Event(), threading.Event()
 
